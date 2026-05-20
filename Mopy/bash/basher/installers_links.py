@@ -23,19 +23,22 @@
 
 """Menu items for the _main_ menu of the installer tab - their window attribute
 points to the InstallersList singleton."""
+import re
 from itertools import chain
 
 from . import InstallersList
 from . import Installers_Link
 from .dialogs import CreateNewProject, CleanDataEditor, ImportOrderDialog, \
-    MonitorExternalInstallationEditor, AImportOrderParser
+    MonitorExternalInstallationEditor, AImportOrderParser, BatchRenameDialog
 from .. import balt, bass, bosh, bush
 from ..balt import AppendableLink, BoolLink, EnabledLink, ItemLink, \
     SeparatorLink, Installer_Op
+from ..bolt import FName
 from ..gui import copy_text_to_clipboard, askYes
 
 __all__ = ['Installers_InstalledFirst', 'Installers_ProjectsFirst',
            u'Installers_RefreshData', u'Installers_AddMarker',
+           'Installers_BatchRename',
            'Installers_MonitorExternalInstallation',
            u'Installers_ListPackages', u'Installers_AnnealAll',
            u'Installers_UninstallAllPackages', 'Installers_CreateNewProject',
@@ -832,3 +835,48 @@ class Installers_GlobalRedirects(balt.MenuLink):
         self.append(SeparatorLink())
         self.append(_Installers_RenameDocs())
         self.append(_Installers_RenameStrings())
+
+#------------------------------------------------------------------------------
+class Installers_BatchRename(Installer_Op, Installers_Link):
+    """Renames all installers by regular expression."""
+    _text = _dialog_title = _('Batch Rename…')
+    _help = _('Renames all installers by regular expression.')
+
+    def __init__(self):
+        super().__init__()
+        self.replacements: dict[object, str] = {}
+
+    @balt.conversation
+    def Execute(self):
+        if BatchRenameDialog.display_dialog(self.window, preview=self._preview):
+            super().Execute()
+
+    def _preview(self, regexp: str, replace: str) -> str:
+        self.replacements.clear()
+        try:
+            result: list[str] = []
+            for index in range(self.window.item_count):
+                item = self.window.GetItem(index)
+                data = self.window.data_store.get(item)
+                name = str(item)
+                if re.match(regexp, name, re.RegexFlag.UNICODE):
+                    new_name = re.sub(regexp, replace, name, 0, re.RegexFlag.UNICODE)
+                    result.append(new_name)
+                    self.replacements[data] = new_name
+            if not result:
+                return _('NOTHING FOUND')
+            return '\n'.join(result)
+        except re.error as e:
+            return _('ERROR: %(error)s') % {'error': e.msg}
+
+    def _perform_action(self, **kwargs):
+        if not self.replacements:
+            return
+        rename: list[tuple[object, FName]] = []
+        for index in range(self.window.item_count):
+            item = self.window.GetItem(index)
+            data = self.window.data_store.get(item)
+            if data in self.replacements:
+                rename.append((data, FName(self.replacements[data])))
+        self.window.try_rename(rename, check_unique=True, with_backups=True)
+        self.replacements.clear()

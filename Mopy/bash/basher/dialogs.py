@@ -36,7 +36,7 @@ from ..gui import BOTTOM, CENTER, RIGHT, AMultiListEditor, CancelButton, \
     DropDown, EventResult, FileOpen, GridLayout, HBoxedLayout, HLayout, \
     HorizontalLine, IcoFromPng, ImageButton, Label, LayoutOptions, ListBox, \
     MLEList, MaybeModalDialogWindow, OkButton, Picture, RadioButton, \
-    SearchBar, SelectAllButton, Spacer, Stretch, TextAlignment, TextField, \
+    SearchBar, SelectAllButton, Spacer, Stretch, TextAlignment, TextArea, TextField, \
     Tree, TreeNode, VBoxedLayout, VLayout, WrappingLabel, bell, get_image, \
     showError, showOk, ImageList
 from ..parsers import CsvParser
@@ -1097,3 +1097,40 @@ class ImportOrderDialog(DialogWindow, AImportOrderParser):
         else: # Skip non-marker packages that aren't present
             return
         self._partial_package_order.append(pkg_fname)
+
+#------------------------------------------------------------------------------
+class BatchRenameDialog(DialogWindow):
+    _min_size = (500, 400)
+
+    def __init__(self, parent, *, preview):
+        super().__init__(
+            parent,
+            sizes_dict=bass.settings,
+            icon_bundle=balt.Resources.bashBlue,
+            title='Batch Rename',
+        )
+
+        def on_change(_):
+            example_output.text_content = preview(
+                regexp_input.text_content,
+                replace_input.text_content,
+            )
+
+        regexp_input: TextField = TextField(self)
+        regexp_input.on_text_changed.subscribe(on_change)
+        replace_input: TextField = TextField(self)
+        replace_input.on_text_changed.subscribe(on_change)
+        example_output: TextArea = TextArea(self, editable=False)
+
+        VLayout(border=6, spacing=4, item_expand=True, items=[
+            Label(self, 'Search (regular expression)'),
+            regexp_input,
+            Label(self, 'Replace'),
+            replace_input,
+            Label(self, 'Preview'),
+            (example_output, LayoutOptions(weight=1)),
+            (HLayout(spacing=5, items=[OkButton(self), CancelButton(self)]),
+             LayoutOptions(h_align=CENTER)),
+        ]).apply_to(self)
+
+        self.update_layout()

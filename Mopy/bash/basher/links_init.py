@@ -351,6 +351,7 @@ def InitInstallerLinks():
     file_menu.append_link(Misc_SaveData())
     # Edit Menu
     edit_menu = InstallersList.global_links[_('Edit')]
+    edit_menu.append_link(Installers_BatchRename())
     edit_menu.append_link(Installers_MonitorExternalInstallation())
     edit_menu.append_link(Installers_CleanData())
     edit_menu.append_link(SeparatorLink())
