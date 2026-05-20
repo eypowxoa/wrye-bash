@@ -1285,9 +1285,17 @@ class UIList(PanelWin):
             glb_menu = GlobalMenu()
             glb_menu.set_categories(tab_categories)
             Link.Frame.set_global_menu(glb_menu)
+        wx_menu_by_label = glb_menu.get_categories()
         for curr_cat in tab_categories:
-            Link.Frame.global_menu.register_category_handler(curr_cat, partial(
-                self._populate_category, curr_cat))
+            wx_menu = wx_menu_by_label[curr_cat]
+            # If we don't pause here, the GUI will flicker like crazy
+            with self.pause_drawing():
+                # Clear the menu and repopulate it. Have to do this JIT, since the
+                # checked/enabled/appended state of links will depend on the
+                # current state of WB itself.
+                for old_menu_item in wx_menu.GetMenuItems():
+                    wx_menu.DestroyItem(old_menu_item)
+                self._populate_category(curr_cat, wx_menu)
 
 # Links -----------------------------------------------------------------------
 #------------------------------------------------------------------------------
