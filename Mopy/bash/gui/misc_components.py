@@ -438,7 +438,6 @@ class GlobalMenu(_AEvtHandler):
 
     def __init__(self):
         super().__init__() # no parent
-        self._category_handlers = {}
         # We need to do this once and only once, because wxPython does not
         # support binding multiple methods to one event source. Also, it *has*
         # to be on Link.Frame, even if that looks weird.
@@ -458,11 +457,8 @@ class GlobalMenu(_AEvtHandler):
         return new_categories == [self._unescape(x[1])
                                   for x in self._native_widget.GetMenus()]
 
-    def register_category_handler(self, cat_label: str, cat_handler):
-        """Registers the specified handler for the specified category. The
-        handler should be a callback that will be given a _GMCategory instance,
-        which it should populate with links."""
-        self._category_handlers[cat_label] = cat_handler
+    def get_categories(self) -> dict[str, _wx.Menu]:
+        return {label: menu for menu, label in self._native_widget.GetMenus()}
 
     def release_bindings(self):
         """Releases the 'on menu' bindings used by this class. You *must* call
@@ -486,20 +482,8 @@ class GlobalMenu(_AEvtHandler):
         Link.Frame.set_status_info(u'')
         if not isinstance(wx_menu, self._GMCategory):
             return # skip all regular context menus that were opened
-        # If we don't pause here, the GUI will flicker like crazy
-        with self.pause_drawing():
-            # Clear the menu and repopulate it. Have to do this JIT, since the
-            # checked/enabled/appended state of links will depend on the
-            # current state of WB itself.
-            for old_menu_item in wx_menu.GetMenuItems():
-                wx_menu.DestroyItem(old_menu_item)
-            # Need to set this, otherwise help text won't be shown
-            Links.Popup = wx_menu
-            try:
-                self._category_handlers[wx_menu.category_label](wx_menu)
-            except KeyError:
-                raise RuntimeError(f"A GlobalMenu handler is missing for "
-                                   f"category '{wx_menu.category_label}'.")
+        # Need to set this, otherwise help text won't be shown
+        Links.Popup = wx_menu
 
     def _handle_menu_closed(self, wx_menu):
         """Internal callback, needed to correctly handle help text."""
