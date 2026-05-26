@@ -2044,7 +2044,7 @@ class InstallersData(DataStore):
 
     def irefresh(self, refresh_in: RefrIn | RefrData | bool, *, what,
                  extract_omods=None, progress=None, fullRefresh=False,
-                 insert_at: int | None = None,
+                 auto_sort: bool | None = None, insert_at: int | None = None,
                  **kwargs) -> RefrData:
         """Refresh context parameters are used for updating installers. Note
         that if any of those are not None "changed" will be always True,
@@ -2071,8 +2071,8 @@ class InstallersData(DataStore):
         if 'D' in what:
             changes |= self._refresh_from_data_dir(progress, fullRefresh)
         # Refresh order of installers - will create 'Last' marker if missing
-        if 'O' in what or changes:
-            order_changed = self.refreshOrder(insert_at)
+        if 'O' in what or changes or self._is_autosort_needed(auto_sort):
+            order_changed = self.refreshOrder(auto_sort, insert_at)
             refresh_info.redraw.update(order_changed)
             changes |= bool(order_changed)
         # Update volatile attributes of the loaded infos using data_sizeCrcDate
@@ -2347,7 +2347,7 @@ class InstallersData(DataStore):
                 show_warning(f'{msg}\n\n{e.message}')
             raise # UI expects that
 
-    def refreshOrder(self, dex: int | None = None):
+    def refreshOrder(self, asort: bool | None = None, dex: int | None = None):
         """Refresh installer status."""
         inOrder, ordering = [], []
         for iname, inst in dict_sort(self, key_f=lambda k: (self[k].order, k)):
@@ -2355,12 +2355,20 @@ class InstallersData(DataStore):
         if dex is None:
             dex = self.last_marker_order(_put_at=len(inOrder))
         inOrder[dex:dex] = ordering
+        if self._is_autosort_needed(asort):
+            inOrder.sort()
         change = set()
         for order, (iname, installer) in enumerate(inOrder):
             if installer.order != order:
                 installer.order = order
                 change.add(iname)
         return change
+
+    @staticmethod
+    def _is_autosort_needed(override: bool | None) -> bool:
+        if override is not None:
+            return override
+        return bass.settings['bash.installers.autoSortByName']
 
     def _refresh_from_data_dir(self, progress, recalculate_all_crcs):
         """Update self.data_sizeCrcDate, using current data_sizeCrcDate as a

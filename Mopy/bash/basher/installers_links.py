@@ -40,6 +40,7 @@ __all__ = ['Installers_InstalledFirst', 'Installers_ProjectsFirst',
            u'Installers_UninstallAllPackages', 'Installers_CreateNewProject',
            'Installers_CleanData', 'Installers_AvoidOnStart',
            u'Installers_Enabled', u'Installers_AutoAnneal',
+           'Installers_AutoSortByName',
            u'Installers_AutoWizard', u'Installers_AutoRefreshProjects',
            'Installers_DropAtCursor',
            'Installers_SkipVanillaContent',
@@ -341,6 +342,30 @@ class Installers_ImportOrder(Installers_Link):
 class _Installers_BoolLink_Refresh(BoolLink):
     def Execute(self):
         super(_Installers_BoolLink_Refresh, self).Execute()
+        self.window.RefreshUI()
+
+#------------------------------------------------------------------------------
+class Installers_AutoSortByName(BoolLink):
+    _text, _bl_key = _('Auto-Sort By Name'), 'bash.installers.autoSortByName'
+    _help = _('Enable/Disable automatic sorting of packages by name.')
+
+    def Execute(self):
+        if bass.settings['bash.installers.autoSortByName']:
+            super().Execute()
+            return
+        if not self._askWarning(_(
+            'Enabling this option will mess up your install order!\n\n'
+            'If you click OK, you will be prompted to backup the install order. '
+            'If you do not want to backup, click Cancel in the next window.\n\n'
+            'If you do not want to enable this setting, '
+            'click Cancel in this window.'
+        ), title=_('Auto-Sorting By Name - Warning')):
+            return
+        exporter = Installers_ExportOrder()
+        exporter.window = self.window
+        exporter.Execute()
+        super().Execute()
+        self.window.data_store.irefresh(False, what='O')
         self.window.RefreshUI()
 
 #------------------------------------------------------------------------------

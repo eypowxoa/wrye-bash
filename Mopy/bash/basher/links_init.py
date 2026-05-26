@@ -220,6 +220,7 @@ def InitInstallerLinks():
     InstallersList.column_links.append_link(Installers_ValidateFomod())
     if True: #--Installation Settings
         inst_settings_menu = MenuLink(_('Installation Settings..'))
+        inst_settings_menu.links.append_link(Installers_AutoSortByName())
         inst_settings_menu.links.append_link(Installers_AutoAnneal())
         inst_settings_menu.links.append_link(Installers_AutoWizard())
         inst_settings_menu.links.append_link(Installers_AutoRefreshProjects())
@@ -375,6 +376,7 @@ def InitInstallerLinks():
     settings_menu.append_link(Installers_Enabled())
     settings_menu.append_link(Installers_AvoidOnStart())
     settings_menu.append_link(SeparatorLink())
+    settings_menu.append_link(Installers_AutoSortByName())
     settings_menu.append_link(Installers_AutoAnneal())
     settings_menu.append_link(Installers_AutoWizard())
     settings_menu.append_link(Installers_AutoRefreshProjects())
