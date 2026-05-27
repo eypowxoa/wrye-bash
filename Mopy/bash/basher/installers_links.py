@@ -41,6 +41,7 @@ __all__ = ['Installers_InstalledFirst', 'Installers_ProjectsFirst',
            'Installers_CleanData', 'Installers_AvoidOnStart',
            u'Installers_Enabled', u'Installers_AutoAnneal',
            u'Installers_AutoWizard', u'Installers_AutoRefreshProjects',
+           'Installers_DropAtCursor',
            'Installers_SkipVanillaContent',
            u'Installers_ApplyEmbeddedBCFs', u'Installers_BsaRedirection',
            u'Installers_RemoveEmptyDirs',
@@ -353,6 +354,11 @@ class Installers_AutoWizard(BoolLink):
     _bl_key = u'bash.installers.autoWizard'
     _help = _(u'Enable/Disable automatic installing or anneal (as applicable) '
               u'of packages after running its wizard.')
+
+#------------------------------------------------------------------------------
+class Installers_DropAtCursor(BoolLink):
+    _text, _bl_key = _(u'Drop At Cursor'), u'bash.installers.dropAtCursor'
+    _help = _(u'Enable/Disable dropping installers at the cursor position.')
 
 #------------------------------------------------------------------------------
 class Installers_WizardOverlay(_Installers_BoolLink_Refresh):

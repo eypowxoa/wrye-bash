@@ -367,6 +367,7 @@ settingDefaults = { # keep current naming format till refactored
     'bash.installers.enabled': True,
     'bash.installers.autoAnneal': True,
     'bash.installers.autoWizard': True,
+    'bash.installers.dropAtCursor': False,
     'bash.installers.wizardOverlay': True,
     'bash.installers.fastStart': True,
     'bash.installers.autoRefreshBethsoft': False,

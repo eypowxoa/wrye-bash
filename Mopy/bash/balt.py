@@ -596,6 +596,9 @@ class UIList(PanelWin):
         _inf, df = self.set_item_format(item, **ui_kwargs)
         self.__gList.insert_update_item(df, item_dex, item, allow_cols)
 
+    def find_index_at_point(self, x: int, y: int) -> int:
+        return self.__gList.find_index_at_point(x, y)
+
     def populate_items(self):
         """Sort items and populate entire list."""
         # Make sure to freeze/thaw, all the insert_update_item calls make the

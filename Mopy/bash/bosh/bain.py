@@ -2044,6 +2044,7 @@ class InstallersData(DataStore):
 
     def irefresh(self, refresh_in: RefrIn | RefrData | bool, *, what,
                  extract_omods=None, progress=None, fullRefresh=False,
+                 insert_at: int | None = None,
                  **kwargs) -> RefrData:
         """Refresh context parameters are used for updating installers. Note
         that if any of those are not None "changed" will be always True,
@@ -2071,7 +2072,7 @@ class InstallersData(DataStore):
             changes |= self._refresh_from_data_dir(progress, fullRefresh)
         # Refresh order of installers - will create 'Last' marker if missing
         if 'O' in what or changes:
-            order_changed = self.refreshOrder()
+            order_changed = self.refreshOrder(insert_at)
             refresh_info.redraw.update(order_changed)
             changes |= bool(order_changed)
         # Update volatile attributes of the loaded infos using data_sizeCrcDate
@@ -2346,12 +2347,13 @@ class InstallersData(DataStore):
                 show_warning(f'{msg}\n\n{e.message}')
             raise # UI expects that
 
-    def refreshOrder(self):
+    def refreshOrder(self, dex: int | None = None):
         """Refresh installer status."""
         inOrder, ordering = [], []
         for iname, inst in dict_sort(self, key_f=lambda k: (self[k].order, k)):
             (inOrder if inst.order >= 0 else ordering).append((iname, inst))
-        dex = self.last_marker_order(_put_at=len(inOrder))
+        if dex is None:
+            dex = self.last_marker_order(_put_at=len(inOrder))
         inOrder[dex:dex] = ordering
         change = set()
         for order, (iname, installer) in enumerate(inOrder):

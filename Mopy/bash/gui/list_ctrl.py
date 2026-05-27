@@ -197,45 +197,50 @@ class _DragListCtrl(_wx.ListCtrl, ListCtrlAutoWidthMixin):
 
     def _OnDropList(self, x, y, indexes):
         start = indexes[0]
-        stop = indexes[-1]
-        index, _hit_flags = self.HitTest((x, y))
-        if index == _wx.NOT_FOUND:   # Didn't drop it on an item
-            if self.GetItemCount() > 0:
-                if y <= self.GetItemRect(0).y:
-                    # Dropped it before the first item
-                    index = 0
-                elif y >= self.GetItemRect(self.GetItemCount() - 1).y:
-                    # Dropped it after the last item
-                    index = self.GetItemCount()
-                else:
-                    # Dropped it on the edge of the list, but not above or below
-                    return
-            else:
-                # Empty list
-                index = 0
-        else:
-            # Dropped on top of an item
-            target = index
-            if start <= target <= stop:
-                # Trying to drop it back on itself
-                return
-            elif target < start:
-                # Trying to drop it furthur up in the list
-                pass
-            elif target > stop:
-                # Trying to drop it further down the list
-                index -= 1 + (stop-start)
-            # If dropping on the top half of the item, insert above it,
-            # otherwise insert below it
-            rect = self.GetItemRect(target)
-            if y > rect.y + rect.height/2:
-                index += 1
+        stop = (indexes[-1] + 1)
+        index = self.find_index_at_point(x, y)
+        if index is None:
+            return
+        if start <= index <= stop:
+            # Trying to drop it back on itself
+            return
+        elif index < start:
+            # Trying to drop it furthur up in the list
+            pass
+        elif index > stop:
+            # Trying to drop it further down the list
+            index -= (stop-start)
         # Do the moving
         self.OnDropIndexes(indexes, index)
 
     def OnDropIndexes(self, indexes, newPos):
         if self.fnDropIndexes:
             _wx.CallLater(10,self.fnDropIndexes,indexes,newPos)
+
+    def find_index_at_point(self, x: int, y: int) -> int | None:
+        index, _hit_flags = self.HitTest((x, y))
+        if index == _wx.NOT_FOUND:   # Didn't drop it on an item
+            if self.GetItemCount() > 0:
+                if y <= self.GetItemRect(0).y:
+                    # Dropped it before the first item
+                    return 0
+                elif y >= self.GetItemRect(self.GetItemCount() - 1).y:
+                    # Dropped it after the last item
+                    return self.GetItemCount()
+                else:
+                    # Dropped it on the edge of the list, but not above or below
+                    return None
+            else:
+                # Empty list
+                return 0
+        else:
+            # Dropped on top of an item
+            # If dropping on the top half of the item, insert above it,
+            # otherwise insert below it
+            rect = self.GetItemRect(index)
+            if y > rect.y + rect.height/2:
+                index += 1
+            return index
 
 class UIListCtrl(WithMouseEvents, WithCharEvents):
     """Backing list control for UILists. Wraps a wx list control, which needs
@@ -314,6 +319,11 @@ class UIListCtrl(WithMouseEvents, WithCharEvents):
     def FindItemAt(self, index):
         """Return item for specified list index."""
         return self._itemId_item[self._native_widget.GetItemData(index)]
+
+    def find_index_at_point(self, x: int, y: int) -> int:
+        """Return index of an item at the specified point."""
+        index = self._native_widget.find_index_at_point(x, y)
+        return self.lc_item_count() if index is None else index
 
     def ReorderDisplayed(self, inorder):
         """Reorder the list control displayed items to match inorder."""

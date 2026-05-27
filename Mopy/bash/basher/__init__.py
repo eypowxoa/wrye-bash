@@ -2382,7 +2382,23 @@ class InstallersList(UIList):
                     except (CancelError, SkipError):
                         pass
         self.panel.frameActivated = True
-        self.panel.ShowPanel(focus_list=True)
+        self.panel.ShowPanel(focus_list=True, insert_at=self._get_drop_target(x, y))
+
+    def _get_drop_target(self, x: int, y: int) -> int | None:
+        if not bass.settings['bash.installers.dropAtCursor']:
+            # Disabled by the settings, so install at default position.
+            return None
+        drop_at_index = self.find_index_at_point(x, y)
+        installer_names = self.data_store.sorted_keys()
+        if drop_at_index >= len(installer_names):
+            # Drop at empty space below the list, so install at default position.
+            return None
+        last_marker_order = self.data_store.last_marker_order()
+        if drop_at_index == last_marker_order:
+            # Drop at last marker, so would be installed before it by default.
+            return None
+        # Drop at existing installer.
+        return drop_at_index
 
     def dndAllow(self, event):
         if not self.sort_column in self._dndColumns:
@@ -2943,6 +2959,7 @@ class InstallersPanel(BashTab):
 
     @balt.conversation
     def ShowPanel(self, canCancel=True, fullRefresh=False, scan_data_dir=False,
+                  insert_at: int | None = None,
                   focus_list=False, **kwargs):
         """Panel is shown. Update self.data."""
         self._first_run_set_enabled() # must run _before_ if below
@@ -2971,6 +2988,7 @@ class InstallersPanel(BashTab):
                     try:
                         refreshui = self.listData.irefresh('I' in what,
                            what=what, fullRefresh=fullRefresh,
+                           insert_at=insert_at,
                            extract_omods=extract_omods, progress=prog)
                         self.frameActivated = False
                     except CancelError:
