@@ -2347,6 +2347,33 @@ class InstallersData(DataStore):
                 show_warning(f'{msg}\n\n{e.message}')
             raise # UI expects that
 
+    def calculate_auto_renames(self) -> list[tuple[Installer, FName]]:
+        result: list[tuple[Installer, FName]] = []
+        category_path = []
+        for old_name, installer in self.sorted_pairs():
+            if installer.is_marker:
+                new_marker_name = re.sub('[~\\s]+$', '', old_name)
+                if not new_marker_name:
+                    category_path = []
+                    continue
+                if '==Last==' == new_marker_name:
+                    category_path = []
+                    continue
+                if new_marker_name != str(old_name):
+                    result.append((installer, FName(new_marker_name)))
+                category_path = new_marker_name.split('~')
+                continue
+            actual_name = old_name.split('~')[-1]
+            new_name = actual_name
+            if category_path:
+                installer_category_path = category_path
+                if actual_name.startswith(installer_category_path[-1]):
+                    installer_category_path = installer_category_path[:-1]
+                new_name = '~'.join((*installer_category_path, actual_name))
+            if new_name != str(old_name):
+                result.append((installer, FName(new_name)))
+        return result
+
     def refreshOrder(self, asort: bool | None = None, dex: int | None = None):
         """Refresh installer status."""
         inOrder, ordering = [], []

@@ -25,6 +25,7 @@
 points to the InstallersList singleton."""
 from itertools import chain
 
+from . import InstallersList
 from . import Installers_Link
 from .dialogs import CreateNewProject, CleanDataEditor, ImportOrderDialog, \
     MonitorExternalInstallationEditor, AImportOrderParser
@@ -42,6 +43,7 @@ __all__ = ['Installers_InstalledFirst', 'Installers_ProjectsFirst',
            u'Installers_Enabled', u'Installers_AutoAnneal',
            'Installers_AutoSortByName',
            u'Installers_AutoWizard', u'Installers_AutoRefreshProjects',
+           'Installers_AutoRenameByMarkers',
            'Installers_DropAtCursor',
            'Installers_SkipVanillaContent',
            u'Installers_ApplyEmbeddedBCFs', u'Installers_BsaRedirection',
@@ -372,6 +374,20 @@ class Installers_AutoSortByName(BoolLink):
 class Installers_AutoAnneal(BoolLink):
     _text, _bl_key = _(u'Auto-Anneal'), u'bash.installers.autoAnneal'
     _help = _(u'Enable/Disable automatic annealing of packages.')
+
+#------------------------------------------------------------------------------
+class Installers_AutoRenameByMarkers(BoolLink):
+    _text = _('Auto-Rename By Markers')
+    _bl_key = 'bash.installers.autoRenameByMarkers'
+    _help = _('Enable/Disable automatic packages prefixing with a markers.')
+
+    def Execute(self):
+        super().Execute()
+        if not bass.settings['bash.installers.autoRenameByMarkers']:
+            return
+        if not isinstance(self.window, InstallersList):
+            return
+        self.window.auto_rename_by_markers(ask=True)
 
 #------------------------------------------------------------------------------
 class Installers_AutoWizard(BoolLink):

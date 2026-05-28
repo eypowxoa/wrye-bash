@@ -59,6 +59,8 @@ from collections.abc import Iterable
 from enum import Enum
 from functools import partial
 from itertools import chain, repeat, starmap, count
+from random import sample
+
 # basher-local imports - maybe work towards dropping (some of) these?
 from .constants import colorInfo, settingDefaults
 from .dialogs import CreateNewPlugin, CreateNewProject, UpdateNotification, \
@@ -75,6 +77,7 @@ from ..bolt import FName, GPath, RefrIn, RefrData, SubProgress, \
     forward_compat_path_to_fn, round_size, str_to_sig, to_unix_newlines, \
     to_win_newlines, top_level_files
 from ..bosh import DataStore, ModInfo, omods, read_dir_tags, read_loot_tags, \
+    InstallersData, \
     save_tags_to_dir
 from ..exception import BoltError, CancelError, SkipError, UnknownListener
 from ..gui import CENTER, BusyCursor, Button, CancelButton, CenteredSplash, \
@@ -2246,8 +2249,52 @@ class InstallersList(UIList):
             newPos = self.item_count - newPos - 1 - (indexes[-1] - indexes[0])
             if newPos < 0: newPos = 0
         # Move the given indexes to the new position
-        self.data_store.moveArchives(self.GetSelected(), newPos, ref_norm=True)
+        self.data_store.moveArchives(self.GetSelected(), newPos, ref_norm=False)
+        self.auto_rename_by_markers(ask=False)
+        self.data_store.refresh_n()
         self.RefreshUI()
+
+    def auto_rename_by_markers(self, *, ask: bool | None = None) -> None:
+        if not bass.settings['bash.installers.autoRenameByMarkers']:
+            return
+        if not isinstance(self.data_store, InstallersData):
+            return
+        renames = self.data_store.calculate_auto_renames()
+        if ask or (renames and (ask is None)):
+            if len(renames) > 10:
+                example_list = sample(renames, 10)
+                example_text = _(
+                    'Files will be renamed: %(total)d,'
+                    '10 of them are shown below:\n\n%(exam)s'
+                ) % {
+                    'total': len(renames),
+                    'exam': '\n'.join([('%s ➔ %s' % r) for r in example_list])
+                }
+            elif renames:
+                example_text = _(
+                    'The following files will be renamed:\n\n%(exam)s'
+                ) % {
+                    'exam': '\n'.join([('%s ➔ %s' % r) for r in renames]),
+                }
+            else:
+                example_text = _('No files will be renamed at this time.')
+            if not askWarning(self, _(
+                'Auto-renaming feature will mess up your installer files!\n\n'
+                'Please do a backup of the installers folder.\n\n'
+                'Cancelling will turn off the auto-renaming setting.\n\n'
+                '%(exam)s'
+            ) % {
+                'exam': example_text,
+            }, title=_('Auto-Rename By Markers - Warning')):
+                bass.settings['bash.installers.autoRenameByMarkers'] = False
+                return
+        if not renames:
+            return
+        self.try_rename(renames, check_unique=True)
+        refresh_order = self.data_store.irefresh(False, what='O')
+        if not refresh_order:
+            return
+        self.RefreshUI(refresh_order)
 
     def _extractOmods(self, omodnames, progress):
         """Called from onDropFiles duplicating __extractOmods with a bunch of
@@ -2988,7 +3035,7 @@ class InstallersPanel(BashTab):
                     try:
                         refreshui = self.listData.irefresh('I' in what,
                            what=what, fullRefresh=fullRefresh,
-                           insert_at=insert_at,
+                           auto_sort=False, insert_at=insert_at,
                            extract_omods=extract_omods, progress=prog)
                         self.frameActivated = False
                     except CancelError:
@@ -2999,6 +3046,8 @@ class InstallersPanel(BashTab):
                 if refreshui or fresh_load:
                     self.uiList.RefreshUI(refreshui or None,
                                           focus_list=focus_list)
+            if isinstance(self.uiList, InstallersList):
+                self.uiList.auto_rename_by_markers()
             super(InstallersPanel, self).ShowPanel()
         finally:
             self.refreshing = False
