@@ -43,6 +43,10 @@ from itertools import chain
 from subprocess import Popen
 from uuid import UUID
 
+from ..bolt import DesktopLink
+from ..bolt import DesktopLinkSingleIcon
+from ..bolt import DesktopLinkTripleIcons
+
 try:
     from lxml import etree # lxml is optional
 except ImportError:
@@ -1078,7 +1082,7 @@ def get_local_app_data_path(_submod):
     return (_GPath(_get_known_path(_FOLDERID.LocalAppData)),
             _(u'Folder path retrieved via SHGetKnownFolderPath'))
 
-def init_app_links(apps_dir) -> list[tuple[_Path, list[_Path] | None, str]]:
+def init_app_links(apps_dir) -> list[DesktopLink]:
     """Scan Mopy/Apps folder for shortcuts (.lnk files). Windows only !
 
     :param apps_dir: the absolute Path to Mopy/Apps folder
@@ -1115,7 +1119,8 @@ def init_app_links(apps_dir) -> list[tuple[_Path, list[_Path] | None, str]]:
         # a custom icon once we have a "Launchers" page in settings
         custom_icon_paths = [apps_dir.join(f'{path.sbody}{x}.png') for x in
                              (16, 24, 32)]
-        if not custom_icon_paths[0].exists(): # try the shortcut specified icon
+        custom_icon = DesktopLinkTripleIcons(*custom_icon_paths)
+        if not custom_icon.icon16.exists(): # try the shortcut specified icon
             win_icon_path, idex = win_icon_location.split(',')
             if win_icon_path == '':
                 if target.cext == u'.exe':
@@ -1131,10 +1136,14 @@ def init_app_links(apps_dir) -> list[tuple[_Path, list[_Path] | None, str]]:
                 win_icon_path = _GPath(win_icon_path)
             if win_icon_path.exists():
                 g_path = _GPath(';'.join((win_icon_path.s, idex)))  ##: huh?
-                custom_icon_paths = [g_path] * 3
+                custom_icon = DesktopLinkSingleIcon(g_path)
             else:
-                custom_icon_paths = None
-        init_params.append((path, custom_icon_paths, shortcut_descr))
+                custom_icon = None
+        init_params.append(DesktopLink(
+            _Path(path),
+            icons=custom_icon,
+            name=shortcut_descr
+        ))
     return init_params
 
 @functools.cache

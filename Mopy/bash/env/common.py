@@ -493,6 +493,23 @@ class _AppLauncher:
         self._app_path = launcher_path
         self._display_launcher = display_launcher
         self._exe_args = cli_args
+        self._working_directory: _Path | None = None
+
+    @property
+    def exe_args(self) -> tuple[str]:
+        return self._exe_args
+
+    @exe_args.setter
+    def exe_args(self, args: tuple[str]) -> None:
+        self._exe_args = args
+
+    @property
+    def working_directory(self) -> _Path | None:
+        return self._working_directory
+
+    @working_directory.setter
+    def working_directory(self, path: _Path) -> None:
+        self._working_directory = path
 
     @property
     def app_path(self):

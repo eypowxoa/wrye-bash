@@ -29,13 +29,18 @@ import sys
 from collections import deque
 from shutil import which
 
+from desktop_entry_lib import DesktopEntry
+
 from .common import _AppLauncher, _find_legendary_games, _LegacyWinAppInfo, \
     _parse_steam_manifests, set_cwd, _parse_version_string
 # some hiding as pycharm is confused in __init__.py by the import *
+from ..bolt import DesktopLink
+from ..bolt import DesktopLinkSingleIcon
 from ..bolt import GPath as _GPath
 from ..bolt import GPath_no_norm as _GPath_no_norm
 from ..bolt import Path as _Path
 from ..bolt import deprint as _deprint
+from ..bolt import top_level_files
 from ..exception import EnvError
 
 # API - Constants =============================================================
@@ -210,14 +215,40 @@ def get_local_app_data_path(submod):
             _('Folder path retrieved via $XDG_DATA_HOME (or fallback to '
               '~/.local/share)'))
 
-def init_app_links(_apps_dir):
-    ##: Rework launchers so that they can work for Linux too
-    # The 'shortcuts' concept is hard for users to grasp anyways (remember how
-    # many people have trouble setting up a shortcut for QACing using xEdit!),
-    # so a better design would be e.g. using our settings dialog to add new
-    # launchers, similar to how MO2 does it - scratch that, I'm actually
-    # thinking about making this a separate tab to make it *super* easy
-    return []
+def init_app_links(apps_dir: _Path) -> list[DesktopLink]:
+    result: list[DesktopLink] = []
+    for lnk in top_level_files(apps_dir):
+        if lnk.fn_ext == '.desktop':
+            try:
+                link_path = apps_dir.join(lnk)
+                entry_section = DesktopEntry.from_file(link_path)
+                if entry_section.NoDisplay:
+                    continue
+                entry_name = entry_section.Name.get_translated_text() or str(lnk)
+                exec_command = entry_section.get_command()
+                exec_dir = _Path(entry_section.Path) if entry_section.Path else None
+                icon_path: _Path | None = None
+                icon_path_value = entry_section.Icon
+                if icon_path_value:
+                    icon_path = _Path(icon_path_value)
+                    if not icon_path.is_file():
+                        icon_path = None
+                        icon_path_value = entry_section.get_icon_path()
+                        if icon_path_value:
+                            icon_path = _Path(icon_path_value)
+                            if not icon_path.is_file():
+                                icon_path = None
+                result.append(DesktopLink(
+                    _Path(exec_command[0]),
+                    arguments=exec_command[1:],
+                    directory=exec_dir,
+                    icons=DesktopLinkSingleIcon(icon_path) if icon_path else None,
+                    key=link_path.sbody,
+                    name=entry_name,
+                ))
+            except Exception as exc:
+                print(exc, file=sys.stderr)
+    return result
 
 def testUAC(_gameDataPath):
     pass # Noop on Linux
@@ -343,7 +374,7 @@ class TaskDialog(object):
 
 class AppLauncher(_AppLauncher):
     def launch_app(self, exe_path, exe_args):
-        kw = dict(close_fds=True, env=os.environ.copy())
+        kw = dict(close_fds=True, cwd=self.working_directory, env=os.environ.copy())
         if os.access(exe_path, mode=os.X_OK):
             # we could run this if we tried so let's do it
             return subprocess.Popen([exe_path.s, *exe_args], **kw)
@@ -361,12 +392,18 @@ class ExeLauncher(AppLauncher):
     def _run_exe(self, exe_path: _Path, exe_args: list[str]) -> subprocess.Popen:
         if exe_path.cext == '.exe':  # win exec, run with wine/proton
             return subprocess.Popen([_WINEPATH, exe_path.s, *exe_args],
+                                    cwd=self.working_directory,
                                     close_fds=True, env=os.environ.copy())
         return super().launch_app(exe_path, exe_args)
 
 class LnkLauncher(AppLauncher):
-    def allow_create(self):
-        return False  # wanting to run a windows .lnk on linux is an overkill
+    def launch_app(self, exe_path, exe_args):
+        return subprocess.Popen(
+            args=[exe_path, *exe_args],
+            close_fds=True,
+            cwd=self.working_directory,
+            env=os.environ.copy(),
+        )
 
 def in_mo2_vfs() -> bool:
     return False # No native MO2 version

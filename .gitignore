@@ -20,6 +20,7 @@ Mopy/bash_default.ini
 Mopy/bash.ini
 
 # the shortcuts in the Mopy/App folder
+Mopy/Apps/*.desktop
 Mopy/Apps/*.lnk
 
 # Windows etc

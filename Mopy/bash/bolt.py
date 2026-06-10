@@ -2865,3 +2865,34 @@ else:
         https://en.wikipedia.org/wiki/Data_deduplication#reflink for more
         information."""
         shutil.copy2(a, b)
+
+
+class DesktopLink:
+    def __init__(
+        self,
+        executable: Path,
+        *,
+        arguments: list[str] | None = None,
+        directory: Path | None = None,
+        icons: DesktopLinkTripleIcons | None = None,
+        key: str = '',
+        name: str = '',
+    ):
+        self.arguments: list[str] = arguments or []
+        self.directory: Path | None = directory
+        self.executable: Path = executable
+        self.icons: DesktopLinkTripleIcons | None = icons
+        self.key: str = (key or executable.sbody).lower()
+        self.name: str = name
+
+
+class DesktopLinkTripleIcons:
+    def __init__(self, icon16: Path, icon24: Path, icon32: Path):
+        self.icon16: Path = icon16
+        self.icon24: Path = icon24
+        self.icon32: Path = icon32
+
+
+class DesktopLinkSingleIcon(DesktopLinkTripleIcons):
+    def __init__(self, icon: Path):
+        super().__init__(icon, icon, icon)
