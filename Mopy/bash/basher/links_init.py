@@ -139,17 +139,33 @@ def InitStatusBar():
         'ShowAudioToolLaunchers']) for at in audio_tools.items())
     all_links.extend(_tool_args(*mt) for mt in misc_tools.items())
     #--Custom Apps
-    for pth, img_path, shortcut_desc in init_app_links(
+    for desktop_link in init_app_links(
             bass.dirs['mopy'].join('Apps')):
+        img_path = None
+        if desktop_link.icons:
+            img_path = [
+                desktop_link.icons.icon16,
+                desktop_link.icons.icon24,
+                desktop_link.icons.icon32,
+            ]
         if img_path is None:
             imgs = badIcons # use the 'x' icon
         else:
             imgs = [__fp(p, GuiImage.img_types['.ico'], x) for x, p in
                     zip((16, 24, 32), img_path)]
         #target.stail would keep the id on renaming the .lnk but this is unique
-        app_key = pth.stail.lower()
-        all_links.append(LnkButton(pth, imgs, shortcut_desc, app_key,
-                                   canHide=False))
+        button = LnkButton(
+            desktop_link.executable,
+            imgs,
+            desktop_link.name,
+            desktop_link.key,
+            canHide=False,
+        )
+        if desktop_link.arguments:
+            button.exe_args = desktop_link.arguments
+        if desktop_link.directory:
+            button.working_directory = desktop_link.directory
+        all_links.append(button)
     #--Final couple
     all_links.append(DocBrowserButton('DocBrowser'))
     all_links.append(PluginCheckerButton('ModChecker'))
