@@ -3,6 +3,7 @@
 # concerns as the original was LGPL, but they've suddenly changed to MIT/0BSD
 # without asking contributors... let's stay on v5 for now.
 chardet==5.2.0
+desktop-entry-lib==5.0; sys_platform == 'linux'
 ifileoperation==1.2.6; sys_platform == 'win32'
 lz4==4.4.5
 pywin32==311; sys_platform == 'win32'
