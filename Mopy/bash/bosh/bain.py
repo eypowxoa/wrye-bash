@@ -549,7 +549,10 @@ class Installer(ListInfo):
         if skipObse:
             Installer._global_start_skips.append(
                 bush.game.Se.plugin_dir.lower())
-            Installer._global_skip_extensions |= Installer._executables_ext
+            __executables_ext = set(Installer._executables_ext)
+            if bass.settings['bash.installers.allowDllAndExe']:
+                __executables_ext.remove('.dll')
+            Installer._global_skip_extensions |= __executables_ext
         Installer._init_executables_skips(ask_yes)
 
     @staticmethod
@@ -722,6 +725,8 @@ class Installer(ListInfo):
                     exeDir=(bush.game.Se.plugin_dir.lower() + os_sep))
             Installer._executables_process['.dll'] = \
             Installer._executables_process['.dlx'] = _obse
+            if bass.settings['bash.installers.allowDllAndExe']:
+                Installer._executables_process.pop('.dll')
         if bush.game.Sd.sd_abbrev:
             _asi = partial(__skipExecutable,
                    exeDir=(bush.game.Sd.install_dir.lower() + os_sep))
@@ -775,6 +780,8 @@ class Installer(ListInfo):
         """
         # Init to empty - this has to reset everything that this method might
         # touch so that the early return from bad archives works correctly
+        if bass.settings['bash.installers.allowDllAndExe']:
+            __skip_exts = frozenset(__skip_exts - {'.exe'})
         self.has_fomod_conf = self.hasBethFiles = False
         self.hasWizard = self.hasBCF = self.hasReadme = False
         self.packageDoc = self.packagePic = None
@@ -2405,6 +2412,9 @@ class InstallersData(DataStore):
         files whose cached date or size has changed. Will skip directories
         (but not files) specified in Installer global skips and remove empty
         dirs if the setting is on."""
+        __skip_exts = Installer.skipExts
+        if bass.settings['bash.installers.allowDllAndExe']:
+            __skip_exts = frozenset(__skip_exts - {'.exe'})
         progress = progress if progress else bolt.Progress()
         data_dir_path = bass.dirs['mods']
         # Scan top level files and folders in the Data dir - for plugins use
@@ -2432,7 +2442,7 @@ class InstallersData(DataStore):
                     if rpFile.lower() in non_ghosts: # limbo ghosts skip them
                         continue
                     low = rpFile[rpFile.rfind('.'):].lower()
-                if low in Installer.skipExts: continue
+                if low in __skip_exts: continue
                 try:
                     modInfo = modInfos[rpFile] # modInfos MUST BE UPDATED
                     non_ghosts.add(rpFile.lower())

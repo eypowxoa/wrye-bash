@@ -44,6 +44,7 @@ __all__ = ['Installers_InstalledFirst', 'Installers_ProjectsFirst',
            u'Installers_UninstallAllPackages', 'Installers_CreateNewProject',
            'Installers_CleanData', 'Installers_AvoidOnStart',
            u'Installers_Enabled', u'Installers_AutoAnneal',
+           'Installers_AllowDllAndExe',
            'Installers_AutoSortByName',
            u'Installers_AutoWizard', u'Installers_AutoRefreshProjects',
            'Installers_AutoRenameByMarkers',
@@ -348,6 +349,17 @@ class _Installers_BoolLink_Refresh(BoolLink):
     def Execute(self):
         super(_Installers_BoolLink_Refresh, self).Execute()
         self.window.RefreshUI()
+
+#------------------------------------------------------------------------------
+class Installers_AllowDllAndExe(BoolLink):
+    _text = _('Allow Dll and Exe')
+    _bl_key = 'bash.installers.allowDllAndExe'
+    _help = _('Enable/Disable installation of a dll and exe files.')
+
+    def Execute(self):
+        super().Execute()
+        self._showWarning(_('Please restart program to see changes.'), _('Needs Restart'))
+
 
 #------------------------------------------------------------------------------
 class Installers_AutoSortByName(BoolLink):

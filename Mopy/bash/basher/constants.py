@@ -365,6 +365,7 @@ settingDefaults = { # keep current naming format till refactored
     'bash.installers.page': 0,
     'bash.installers.isFirstRun': True,
     'bash.installers.enabled': True,
+    'bash.installers.allowDllAndExe': False,
     'bash.installers.autoSortByName': False,
     'bash.installers.autoAnneal': True,
     'bash.installers.autoRenameByMarkers': False,
