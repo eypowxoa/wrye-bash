@@ -127,6 +127,7 @@ class ASkyrimGameInfo(PatchGame):
             'dyndolod', # 3P: DynDOLOD
             'flm', # 3P: FormList Manipulator
             'grass',
+            'headpartwhitelist', # 3P: Headpart Whitelist
             'interface',
             'kreate', # 3P: KreatE
             'kiloader', # 3P: kiloader
