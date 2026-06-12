@@ -1101,6 +1101,7 @@ class GeneralPage(_AScrollablePage):
     _gm_reverse = reverse_dict(_global_menu_options)
     _setting_ids = {'global_menu_state', 'res_scroll_on', 'managed_game',
                     'plugin_encoding', 'update_check_enabled',
+                    'wb_tools_dir',
                     'update_check_cooldown', 'uac_restart', 'wb_temp_dir'}
 
     def __init__(self, parent, page_desc):
@@ -1183,6 +1184,19 @@ class GeneralPage(_AScrollablePage):
             btn_tooltip=_('Reset the path at which Wrye Bash will store '
                           'temporary files back to its default value.'))
         reset_temp_folder_btn.on_clicked.subscribe(self._on_temp_folder_reset)
+        self._tools_folder_path = TextField(self,
+            init_text=bass.settings['bash.tools_dir'])
+        self._tools_folder_path.on_text_changed.subscribe(
+            self._on_tools_folder_change)
+        browse_tools_folder_btn = ImageButton(self, get_image('folder.16'),
+            btn_tooltip=_('Open a file dialog to interactively choose the '
+                          'path at which Wrye Bash will search tools.'))
+        browse_tools_folder_btn.on_clicked.subscribe(
+            self._on_tools_folder_browse)
+        reset_tools_folder_btn = ImageButton(self, get_image('reset.16'),
+            btn_tooltip=_('Reset the path at which Wrye Bash will search'
+                          'tools back to its default value.'))
+        reset_tools_folder_btn.on_clicked.subscribe(self._on_tools_folder_reset)
         VLayout(border=6, spacing=4, item_expand=True, items=[
             self._page_desc_label,
             HorizontalLine(self),
@@ -1208,6 +1222,12 @@ class GeneralPage(_AScrollablePage):
                     (self._temp_folder_path, LayoutOptions(weight=1)),
                     browse_temp_folder_btn,
                     reset_temp_folder_btn,
+            ]),
+            HBoxedLayout(self, _('Tools Folder'), spacing=4,
+                item_expand=True, items=[
+                    (self._tools_folder_path, LayoutOptions(weight=1)),
+                    browse_tools_folder_btn,
+                    reset_tools_folder_btn,
             ]),
             VBoxedLayout(self, title=_(u'Miscellaneous'), spacing=6, items=[
                 HLayout(spacing=6, items=[
@@ -1282,6 +1302,21 @@ class GeneralPage(_AScrollablePage):
     def _on_temp_folder_reset(self):
         self._temp_folder_path.text_content = default_global_temp_dir()
 
+    def _on_tools_folder_change(self, new_tools_dir: str):
+        self._mark_setting_changed('wb_tools_dir',
+            new_tools_dir != bass.settings['bash.tools_dir'])
+
+    def _on_tools_folder_browse(self):
+        chosen_tools_dir = DirOpen.display_dialog(self,
+            title=_('Choose Tools Folder'),
+            defaultPath=bass.settings['bash.tools_dir'],
+            create_dir=True)
+        if chosen_tools_dir:
+            self._tools_folder_path.text_content = chosen_tools_dir.s
+
+    def _on_tools_folder_reset(self):
+        self._tools_folder_path.text_content = ''
+
     def _on_uac_restart(self, checked: bool):
         self._mark_setting_changed(u'uac_restart', checked)
 
@@ -1322,6 +1357,11 @@ class GeneralPage(_AScrollablePage):
             new_temp_dir = self._temp_folder_path.text_content
             bass.settings['bash.temp_dir'] = new_temp_dir
             self._request_restart(_('Temporary Folder'))
+        # Tools Folder
+        if self._is_changed('wb_tools_dir'):
+            new_tools_dir = self._tools_folder_path.text_content
+            bass.settings['bash.tools_dir'] = new_tools_dir
+            self._request_restart(_('Tools Folder'))
         # Show Global Menu
         if self._is_changed('global_menu_state'):
             new_gm_state = self._global_menu_options[
