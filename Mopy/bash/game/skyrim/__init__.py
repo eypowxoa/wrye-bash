@@ -150,6 +150,7 @@ class ASkyrimGameInfo(PatchGame):
             'scripts',
             'seasons', # 3P: Seasons of Skyrim SKSE
             'seq',
+            'shadercache', # 3P: Community Shaders
             'shaders', # 3P: Community Shaders
             'shadersfx',
             'skse', # 3P: SKSE
@@ -160,6 +161,7 @@ class ASkyrimGameInfo(PatchGame):
             'tools', # 3P: FNIS
             'ostim', # 3P: OSTIM
             'pandora_engine', # 3P: Pandora Behavior Engine
+            'unifiedwatercache', # 3P: Community Shaders
         }
         keep_data_dirs = {'lsdata'}
         no_skip = GameInfo.Bain.no_skip | {*(_j('interface', x) for x in (
