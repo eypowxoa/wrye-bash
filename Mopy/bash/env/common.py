@@ -543,6 +543,8 @@ class _AppLauncher:
             root_dirs = [bass.dirs[root_dirs]]
         elif isinstance(root_dirs, _Path):
             root_dirs = [root_dirs]
+        if bass.settings['bash.tools_dir']:
+            root_dirs = (*root_dirs, _GPath(bass.settings['bash.tools_dir']))
         if isinstance(subfolders, str):
             subfolders = [(subfolders,)]
         elif isinstance(subfolders, tuple):

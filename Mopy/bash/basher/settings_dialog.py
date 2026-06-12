@@ -1103,7 +1103,8 @@ class GeneralPage(_AScrollablePage):
                     'plugin_encoding', 'update_check_enabled', 'nexus_api_key',
                     'nexus_api_requests_delay', 'nexus_nxm_command',
                     'nexus_update_period', 'nexus_update_period_unit',
-                    'update_check_cooldown', 'uac_restart', 'wb_temp_dir'}
+                    'update_check_cooldown', 'uac_restart', 'wb_temp_dir',
+                    'wb_tools_dir'}
 
     def __init__(self, parent, page_desc):
         super(GeneralPage, self).__init__(parent, page_desc)
@@ -1182,6 +1183,18 @@ class GeneralPage(_AScrollablePage):
             btn_tooltip=_('Reset the path at which Wrye Bash will store '
                           'temporary files back to its default value.'),
             on_click=self._on_temp_folder_reset)
+        self._tools_folder_path = TextField(self,
+            init_text=bass.settings['bash.tools_dir'])
+        self._tools_folder_path.on_text_changed.subscribe(
+            self._on_tools_folder_change)
+        browse_tools_folder_btn = ImageButton(self, get_image('folder.16'),
+            btn_tooltip=_('Open a file dialog to interactively choose the '
+                          'path at which Wrye Bash will search tools.'),
+            on_click=self._on_tools_folder_browse)
+        reset_tools_folder_btn = ImageButton(self, get_image('reset.16'),
+            btn_tooltip=_('Reset the path at which Wrye Bash will search'
+                          'tools back to its default value.'),
+            on_click=self._on_tools_folder_reset)
         if is_nexus_nxm_supported():
             if 'nt' == os.name:
                 raise NotImplementedError
@@ -1273,6 +1286,12 @@ class GeneralPage(_AScrollablePage):
                     (self._temp_folder_path, LayoutOptions(weight=1)),
                     browse_temp_folder_btn,
                     reset_temp_folder_btn,
+            ]),
+            HBoxedLayout(self, _('Tools Folder'), spacing=4,
+                item_expand=True, items=[
+                    (self._tools_folder_path, LayoutOptions(weight=1)),
+                    browse_tools_folder_btn,
+                    reset_tools_folder_btn,
             ]),
             VBoxedLayout(self, _('Nexus'), spacing=4,
                 item_expand=True, items=[
@@ -1398,6 +1417,21 @@ class GeneralPage(_AScrollablePage):
 
     def _on_temp_folder_reset(self):
         self._temp_folder_path.text_content = default_global_temp_dir()
+
+    def _on_tools_folder_change(self, new_tools_dir: str):
+        self._mark_setting_changed('wb_tools_dir',
+            new_tools_dir != bass.settings['bash.tools_dir'])
+
+    def _on_tools_folder_browse(self):
+        chosen_tools_dir = DirOpen.display_dialog(self,
+            title=_('Choose Tools Folder'),
+            defaultPath=bass.settings['bash.tools_dir'],
+            create_dir=True)
+        if chosen_tools_dir:
+            self._tools_folder_path.text_content = chosen_tools_dir.s
+
+    def _on_tools_folder_reset(self):
+        self._tools_folder_path.text_content = ''
 
     def _is_nexus_nxm_command_configured(self) -> bool:
         return bool(self._nexus_nxm_command.text_content.strip())
@@ -1542,6 +1576,11 @@ class GeneralPage(_AScrollablePage):
             new_temp_dir = self._temp_folder_path.text_content
             bass.settings['bash.temp_dir'] = new_temp_dir
             self._request_restart(_('Temporary Folder'))
+        # Tools Folder
+        if self._is_changed('wb_tools_dir'):
+            new_tools_dir = self._tools_folder_path.text_content
+            bass.settings['bash.tools_dir'] = new_tools_dir
+            self._request_restart(_('Tools Folder'))
         # Nexus Nxm Command
         if self._is_changed('nexus_nxm_command'):
             new_nexus_nxm_command = self._nexus_nxm_command.text_content
