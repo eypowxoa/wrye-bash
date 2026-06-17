@@ -2176,11 +2176,15 @@ class InstallersList(UIList):
     global_links = defaultdict(lambda: Links()) # Global menu
     _sunkenBorder = False
     _editLabels = _copy_paths = True
-    _sort_keys = {'Package': None,
-        'Order'   : _ask_info('order'),
+    _sort_keys = {
+        'Package': None,
+        'Order': _ask_info('order'),
         'Modified': _ask_info('ftime'),
-        'Size'    : _ask_info('fsize'),
-        'Files'   : _ask_info('num_of_files'),
+        'Size': _ask_info('fsize'),
+        'Files': _ask_info('num_of_files'),
+        'Nexus Mod': _ask_info('nexus_mod_identifier'),
+        'Nexus File': _ask_info('nexus_file_identifier'),
+        'Version': _ask_info('nexus_file_version'),
     }
     _back_key_priority = UIList._back_key_priority | {
         k: j for j, k in enumerate(['installers.bkgd.skipped',
@@ -2200,14 +2204,20 @@ class InstallersList(UIList):
             items.sort(key=lambda x: not __lm(self, x))
     _extra_sortings = [_sortStructure, _sortActive, _sortProjects]
     #--Labels
+    @staticmethod
+    def _int_with_empty_zero(x: int) -> str:
+        return str(x) if x else ''
     labels = {
         # Special handling to allow ==Last== to be shown translated to the user
         'Package': lambda self, p: _localized_last if p == '==Last==' else p,
-        'Order':    _ask_info('order', wrap=str),
+        'Order': _ask_info('order', wrap=str),
         'Modified': _ask_info('ftime', wrap=format_date),
-        'Size':     _ask_info('size_string', ()),
-        'Files':    lambda self, p: self.data_store[p].number_string(
+        'Size': _ask_info('size_string', ()),
+        'Files': lambda self, p: self.data_store[p].number_string(
             self.data_store[p].num_of_files),##:_ask_info('num_of_files')(self, p)
+        'Nexus Mod': _ask_info('nexus_mod_identifier', wrap=_int_with_empty_zero),
+        'Nexus File': _ask_info('nexus_file_identifier', wrap=_int_with_empty_zero),
+        'Version': _ask_info('nexus_file_version'),
     }
     #--DnD
     _dndList, _dndFiles, _dndColumns = True, True, [u'Order']

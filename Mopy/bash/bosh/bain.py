@@ -39,6 +39,7 @@ from zlib import crc32
 
 from . import DataStore, InstallerConverter, ModInfos, common_image_exts, \
     best_ini_files, data_tracking_stores
+from . import reTesNexus
 from .. import archives, bass, bolt, bush, env
 from ..archives import compress7z, defaultExt, extract7z, list_archive, \
     readExts
@@ -146,7 +147,10 @@ class Installer(ListInfo):
         'ci_dest_sizeCrc', 'skipExtFiles', 'skipDirFiles', 'status',
         'missingFiles', 'mismatchedFiles', 'project_refreshed', 'unSize',
         'espms', 'underrides', 'hasWizard', 'espmMap', 'hasReadme', 'hasBCF',
-        'hasBethFiles', 'has_fomod_conf')
+        'hasBethFiles', 'has_fomod_conf',
+        'nexus_file_identifier', 'nexus_file_version',
+        'nexus_mod_identifier', 'nexus_mod_version',
+    )
 
     #--Package analysis/porting.
     type_string = _('Unrecognized')
@@ -255,6 +259,7 @@ class Installer(ListInfo):
     def __init__(self, fn_key, **kwargs):
         self._set_defaults()
         ListInfo.__init__(self, f'{fn_key}')
+        self._parse_nexus_file_name()
 
     def _set_defaults(self):
         """Initialize everything to default values."""
@@ -291,6 +296,10 @@ class Installer(ListInfo):
         self.espmNots: set[FName] = set() #--Plugin FNames that user has decided not to install.
         self._remaps = bolt.FNDict() # Pickles to dict, equivalent to previous
         #--Volatiles (not pickled values)
+        # --Volatiles: Nexus
+        self.nexus_file_identifier: int = 0
+        self.nexus_file_version: str = ''
+        self.nexus_mod_identifier: int = 0
         #--Volatiles: directory specific
         self.project_refreshed = False
         #--Volatile: set by refreshDataSizeCrc
@@ -312,6 +321,36 @@ class Installer(ListInfo):
         self.underrides = set()
         self.missingFiles = set()
         self.mismatchedFiles = set()
+
+    def _parse_nexus_file_name(self) -> None:
+        """
+        Parse the nexus file name.
+        Examples:
+        file-1.7z - no version or file id, so 1 is mod id.
+        file-1-999.7z - not all files have id, so 1 is mod id, 999 is version.
+        file-1-1000.7z - 1000 is too big for version, so 1 is mod id, 1000 is file id.
+        file-1-2-999.7z - 999 is too small for file id, so 1 is mod id, 2-999 is version.
+        file-1-2-1000.7z - full format, so 1 is mod id, 2 is version, 1000 is file id.
+        file-1-2-a1000.7z - a1000 is not int, so 1 is mod id, 2-a1000 is version.
+        """
+        match_result = reTesNexus.match(self.fn_key)
+        if not match_result:
+            return
+        self.nexus_mod_identifier = int(match_result.group(2))
+        version_and_file_id = match_result.group(3).strip('-')
+        if not version_and_file_id:
+            return
+        version_and_file_id_components = version_and_file_id.split('-')
+        file_id_candidate = version_and_file_id_components.pop()
+        try:
+            file_id = int(file_id_candidate)
+        except ValueError:
+            file_id = 0
+        if file_id > 999:
+            self.nexus_file_identifier = file_id
+        else:
+            version_and_file_id_components.append(file_id_candidate)
+        self.nexus_file_version = '-'.join(version_and_file_id_components)
 
     @property
     def num_of_files(self): return len(self.fileSizeCrcs)
