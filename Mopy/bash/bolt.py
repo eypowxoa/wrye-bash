@@ -467,11 +467,17 @@ class JsonParsable:
         inst_args = {}
         for cls_attr, cls_type_str in cls.__annotations__.items():
             attr_parser = cls._parsers.get(cls_attr)
-            if attr_parser is None:
-                # No special parser, access JSON dict directly
-                parsed_obj = json_dict[cls_attr]
-            else:
-                parsed_obj = attr_parser(json_dict, cls_attr)
+            try:
+                if attr_parser is None:
+                    # No special parser, access JSON dict directly
+                    parsed_obj = json_dict[cls_attr]
+                else:
+                    parsed_obj = attr_parser(json_dict, cls_attr)
+            except KeyError:
+                if 'None' in cls_type_str:
+                    parsed_obj = None
+                else:
+                    raise
             inst_args[cls_attr] = parsed_obj
         return cls(**inst_args)
 

@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import functools
 import os
+import re
 import sys
 import time
 from collections import OrderedDict, defaultdict, namedtuple, Counter
@@ -59,6 +60,7 @@ from collections.abc import Iterable
 from enum import Enum
 from functools import partial
 from itertools import chain, repeat, starmap, count
+from itertools import cycle
 from random import sample
 
 # basher-local imports - maybe work towards dropping (some of) these?
@@ -79,6 +81,7 @@ from ..bolt import FName, GPath, RefrIn, RefrData, SubProgress, \
 from ..bosh import DataStore, ModInfo, omods, read_dir_tags, read_loot_tags, \
     InstallersData, \
     save_tags_to_dir
+from ..bosh import Installer
 from ..exception import BoltError, CancelError, SkipError, UnknownListener
 from ..gui import CENTER, BusyCursor, Button, CancelButton, CenteredSplash, \
     CheckListBox, Color, CopyOrMovePopup, DateAndTimeDialog, DropDown, \
@@ -91,6 +94,7 @@ from ..gui import CENTER, BusyCursor, Button, CancelButton, CenteredSplash, \
     get_image, get_installer_color_checks, get_image_dir, \
     copy_text_to_clipboard
 from ..localize import format_date
+from ..nexus import NexusUpdateCheckerThread
 from ..plugin_types import active_keys, ST_MERGED
 from ..update_checker import LatestVersion, UCThread
 
@@ -101,6 +105,8 @@ if sys.prefix not in _env_path.split(';'):
 
 # Settings --------------------------------------------------------------------
 settings: bolt.Settings = None
+
+_re_digits = re.compile(r"(\\d+)")
 
 # Links -----------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -2185,6 +2191,8 @@ class InstallersList(UIList):
         'Nexus Mod': _ask_info('nexus_mod_identifier'),
         'Nexus File': _ask_info('nexus_file_identifier'),
         'Version': _ask_info('nexus_file_version'),
+        'Nexus Version': lambda self, p: self._retrieve_mod_version(p),
+        'Nexus Updated': lambda self, p: self._is_mod_updated(p),
     }
     _back_key_priority = UIList._back_key_priority | {
         k: j for j, k in enumerate(['installers.bkgd.skipped',
@@ -2218,12 +2226,67 @@ class InstallersList(UIList):
         'Nexus Mod': _ask_info('nexus_mod_identifier', wrap=_int_with_empty_zero),
         'Nexus File': _ask_info('nexus_file_identifier', wrap=_int_with_empty_zero),
         'Version': _ask_info('nexus_file_version'),
+        'Nexus Version': lambda self, p: self._retrieve_mod_version(p),
+        'Nexus Updated': lambda self, p: '' if self._is_mod_updated(p) else '❌',
     }
     #--DnD
     _dndList, _dndFiles, _dndColumns = True, True, [u'Order']
     #--GUI
     status_color = {-20: 'grey', -10: 'red', 0: 'white', 10: 'orange',
                     20: 'yellow', 30: 'green'}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._update_checker_thread = self.start_nexus_update_check()
+        self._file_version_index: dict[int, tuple[int | str, ...]] = dict()
+
+    def start_nexus_update_check(self) -> NexusUpdateCheckerThread:
+        on_checked = self._make_custom_event(self._on_nexus_update_check)
+        on_completed = self._make_custom_event(self._on_nexus_update_complete)
+        thread = NexusUpdateCheckerThread(on_checked, on_completed)
+        thread.start()
+        return thread
+
+    def _on_nexus_update_check(self, mod_identifier: int) -> None:
+        for name, installer in self.data_store.items():
+            if installer.nexus_mod_identifier == mod_identifier:
+                self.PopulateItem(self._get_uil_index(name))
+
+    def _on_nexus_update_complete(self) -> None:
+        installer: Installer
+        for installer in self.data_store.values():
+            nexus_mod_identifier = installer.nexus_mod_identifier
+            if nexus_mod_identifier <= 0:
+                continue
+            self._file_version_index[nexus_mod_identifier] = max(
+                self._file_version_index.get(nexus_mod_identifier, tuple()),
+                self._natural_comparison_key(installer.nexus_file_version)
+            )
+        self.RefreshUI()
+
+    def _retrieve_mod_version(self, key: FName) -> str:
+        installer = self.data_store[key]
+        nexus_mod_identifier = installer.nexus_mod_identifier
+        return self._update_checker_thread.retrieve_mod_version(nexus_mod_identifier)
+
+    @staticmethod
+    def _natural_comparison_key(key: str) -> tuple[int | str, ...]:
+        """https://stackoverflow.com/a/68859658"""
+        return tuple(
+            int(part) if is_digit else part
+            for part, is_digit in zip(_re_digits.split(key), cycle((False, True)))
+        )
+
+    def _is_mod_updated(self, key: FName) -> bool:
+        installer: Installer = self.data_store[key]
+        if installer.is_marker:
+            return True
+        if installer.nexus_mod_identifier <= 0:
+            return True
+        file_version_key = self._file_version_index.get(installer.nexus_mod_identifier, tuple())
+        mod_version = self._retrieve_mod_version(key).replace('.', '-')
+        mod_version_key = self._natural_comparison_key(mod_version)
+        return file_version_key >= mod_version_key
 
     @fast_cached_property
     def icons(self):

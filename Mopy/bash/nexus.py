@@ -66,12 +66,21 @@ __author__ = 'Ganda, Infernio'
 import json
 import uuid
 import webbrowser
+from collections.abc import Callable
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
+from threading import Lock
+from threading import Thread
+from time import sleep
+from time import time
 
 from . import bass
+from . import bush
+from .bass import dirs
 from .bolt import JsonParsable, gen_enum_parser, json_remap
+from .bolt import Path
 from .exception import EndorsedTooSoonError, EndorsedWithoutDownloadError, \
     LimitReachedError, RequestError
 from .web import ARestHandler
@@ -168,18 +177,18 @@ class NxMod(JsonParsable):
         'endorsement': lambda d, a: NxModEndorsement.parse_single(d[a]),
     }
     # The user-visible name for this mod
-    mod_display_name: str
+    mod_display_name: str | None
     # A short description of this mod
-    mod_summary: str
+    mod_summary: str | None
     # The full description of this mod, including markup (BBCode and/or HTML)
-    mod_description: str = field(repr=False)
+    mod_description: str | None = field(repr=False)
     # The URL to the main picture used for this mod
-    picture_url: str
+    picture_url: str | None
     # The number of times this mod has been downloaded
-    mod_downloads: int
+    mod_downloads: int | None
     # The number of times this mod has been downloaded, counting each user only
     # once
-    mod_unique_downloads: int
+    mod_unique_downloads: int | None
     # A unique ID representing this mod
     mod_uid: int
     # The game-relatively unique ID of this mod
@@ -477,7 +486,7 @@ class Nexus(ARestHandler):
     # ISO 8601 format
     _daily_reset: str | None
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, wait_between_requests: float = 0.0):
         super().__init__(extra_headers={
             'accept': 'application/json',
             'apikey': api_key,
@@ -493,8 +502,16 @@ class Nexus(ARestHandler):
         self._daily_limit = None
         self._daily_remaining = None
         self._daily_reset = None
+        self._next_request_time = 0.0
+        self._wait_between_requests = wait_between_requests
 
     # Abstract API ------------------------------------------------------------
+    def _apply_rate_limit(self):
+        now = time()
+        remaining = self._next_request_time - now
+        if remaining > 0.0 and self._wait_between_requests > 0.0:
+            sleep(remaining)
+
     def _handle_error_response(self, response):
         if response.status_code == 429:
             raise LimitReachedError()
@@ -511,8 +528,46 @@ class Nexus(ARestHandler):
         self._daily_limit = int(response_headers['x-rl-daily-limit'])
         self._daily_remaining = int(response_headers['x-rl-daily-remaining'])
         self._daily_reset = response_headers['x-rl-daily-reset']
+        now = time()
+        self._next_request_time = now + max(
+            self._calculate_interval(
+                now,
+                self._hourly_limit,
+                self._hourly_remaining,
+                self._hourly_reset,
+            ),
+            self._calculate_interval(
+                now,
+                self._daily_limit,
+                self._daily_remaining,
+                self._daily_reset,
+            ),
+        )
 
     # Internal API ------------------------------------------------------------
+    def _calculate_interval(
+        self,
+        now: float,
+        limit: int,
+        remaining: int,
+        reset: str
+    ) -> float:
+        try:
+            reset_date = datetime.strptime(reset, "%Y-%m-%d %H:%M:%S %z")
+        except ValueError:
+            return self._wait_between_requests
+        if limit <= 0:
+            return self._wait_between_requests
+        if remaining <= 0:
+            return self._wait_between_requests
+        timestamp = reset_date.timestamp()
+        remaining_time = timestamp - now
+        linear_interval = remaining_time / remaining
+        progress = (limit - remaining) / limit
+        coefficient = progress**2
+        result_interval = linear_interval * coefficient
+        return result_interval
+
     def _mod_endorse_shared(self, game_domain: str, mod_id: int,
             endpoint_file: str):
         """Shared code of mod_endorse and mod_disendorse."""
@@ -749,3 +804,204 @@ class Nexus(ARestHandler):
         """Returns a list of all colour schemes, including the primary,
         secondary and 'darker' colours."""
         return NxColourScheme.parse_many(self._send_get('colourschemes.json'))
+
+
+_m = 60
+_h = 60 * _m
+_d = 24 * _h
+
+
+class NexusModUpdateInfo:
+    def __init__(self, name: str, version: str):
+        self._name: str = name
+        self._version: str = version
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def version(self) -> str:
+        return self._version
+
+
+class NexusUpdateChecker:
+    def __init__(
+        self,
+        nexus: Nexus,
+        game: str,
+        database_path: Path,
+    ):
+        self._changed: bool = False
+        database: dict[int, tuple[int, int, str, str]] = dict()
+        try:
+            with open(database_path, 'rb') as database_file:
+                database_data = json.loads(database_file.read().decode('utf8'))
+                for k, v in database_data.items():
+                    database[int(k)] = tuple(v)
+        except FileNotFoundError:
+            pass
+        self._database: dict[int, tuple[int, int, str, str]] = database
+        self._database_path: Path = database_path
+        self._game: str = game
+        self._nexus: Nexus = nexus
+
+    def _set_database_item(
+        self,
+        mod_identifier: int,
+        item: tuple[int, int, str, str],
+    ) -> None:
+        self._changed = True
+        self._database[mod_identifier] = item
+
+    def _update_database(self, now: int, period: UpdatePeriod) -> None:
+        match period:
+            case UpdatePeriod.ONE_WEEK:
+                time_ago = now - (6 * _d + 23 * _h + 30 * _m)
+            case UpdatePeriod.ONE_MONTH:
+                time_ago = now - (29 * _d + 23 * _h + 30 * _m)
+            case _:
+                time_ago = now - (23 * _h + 30 * _m)
+        data = self._nexus.mods_updated(self._game, period)
+        for nexus_item in data:
+            mod_identifier = nexus_item.mod_id
+            updated_at = nexus_item.latest_file_update
+            try:
+                database_item = self._database[mod_identifier]
+            except KeyError:
+                self._set_database_item(
+                    mod_identifier,
+                    (
+                        now,
+                        updated_at,
+                        "",
+                        "",
+                    ),
+                )
+            else:
+                self._set_database_item(
+                    mod_identifier,
+                    (
+                        now,
+                        max(database_item[1], updated_at),
+                        database_item[2] if database_item[1] == updated_at else "",
+                        database_item[3],
+                    ),
+                )
+        for mod_identifier, database_item in self._database.items():
+            if (time_ago < database_item[0]) and (database_item[0] < now):
+                self._set_database_item(
+                    mod_identifier,
+                    (
+                        now,
+                        database_item[1],
+                        database_item[2],
+                        database_item[3],
+                    ),
+                )
+
+    def retrieve_mod(self, mod_identifier: int) -> NexusModUpdateInfo:
+        now = int(time())
+        try:
+            item = self._database[mod_identifier]
+        except KeyError:
+            self._set_database_item(mod_identifier, (0, 0, "", ""))
+        else:
+            valid_since = now - (5 * _h)
+            if item[0] < valid_since:
+                day_ago = now - (23 * _h + 30 * _m)
+                if item[0] > day_ago:
+                    self._update_database(now, UpdatePeriod.ONE_DAY)
+                else:
+                    week_ago = now - (6 * _d + 23 * _h + 30 * _m)
+                    if item[0] > week_ago:
+                        self._update_database(now, UpdatePeriod.ONE_WEEK)
+                    else:
+                        month_ago = now - (29 * _d + 23 * _h + 30 * _m)
+                        if item[0] > month_ago:
+                            self._update_database(now, UpdatePeriod.ONE_MONTH)
+                        else:
+                            self._set_database_item(mod_identifier, (0, 0, "", ""))
+        if (
+            not self._database[mod_identifier][2]
+            or not self._database[mod_identifier][3]
+        ):
+            data = self._nexus.mod_details(self._game, mod_identifier)
+            self._set_database_item(
+                mod_identifier,
+                (
+                    now,
+                    data.updated_timestamp,
+                    data.mod_version,
+                    data.mod_display_name or '-',
+                ),
+            )
+        if self._changed:
+            self._changed = False
+            temp_name = self._database_path.body + '.tmp.json'
+            temp_path = self._database_path.head.join(temp_name)
+            with open(temp_path, 'wb') as database:
+                database.write(json.dumps(
+                    self._database,
+                    allow_nan=False,
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                ).encode("utf8"))
+            temp_path.moveTo(self._database_path)
+        return NexusModUpdateInfo(
+            self._database[mod_identifier][3],
+            self._database[mod_identifier][2],
+        )
+
+
+class NexusUpdateCheckerThread(Thread):
+    def __init__(
+        self,
+        on_checked: Callable[..., None],
+        on_completed: Callable[..., None],
+    ):
+        super().__init__(daemon=True)
+        self._database_cache: dict[int, str] = dict()
+        self._database_cache_lock: Lock = Lock()
+        self._on_checked: Callable[..., None] = on_checked
+        self._on_completed: Callable[..., None] = on_completed
+        self._requests: list[int] = list()
+        self._requests_lock: Lock = Lock()
+
+    def request_nexus_update_check(self, mod: int) -> None:
+        with self._requests_lock:
+            self._requests.append(mod)
+
+    def retrieve_mod_version(self, mod: int) -> str:
+        if mod <= 0:
+            return ''
+        with self._database_cache_lock:
+            try:
+                return self._database_cache[mod]
+            except KeyError:
+                self._database_cache[mod] = ''
+                self.request_nexus_update_check(mod)
+                return ''
+
+    def run(self):
+        nexus = Nexus(bass.settings['bash.nexus.api_key'], 10.0)
+        update_checker = NexusUpdateChecker(
+            nexus,
+            bush.game.get_nexus_game_domain(),
+            dirs['wrye_bash_appdata'].join('nexus_updates_database.json'),
+        )
+        mods: list[int] = list()
+        while True:
+            mods.clear()
+            with self._requests_lock:
+                mods.extend(self._requests)
+                self._requests.clear()
+            for mod_identifier in mods:
+                mod_version = update_checker.retrieve_mod(mod_identifier).version
+                with self._database_cache_lock:
+                    self._database_cache[mod_identifier] = mod_version
+                self._on_checked(mod_identifier=mod_identifier)
+            if mods:
+                self._on_completed()
+            sleep(1)

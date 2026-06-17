@@ -30,6 +30,7 @@ import sys
 from enum import Enum
 from itertools import chain, product
 from os.path import join as _j
+from urllib.parse import urlparse
 
 from .. import bolt, initialization ##:(600) decouple from initialization
 from ..plugin_types import MergeabilityCheck, PluginFlag, AMasterFlag, \
@@ -393,6 +394,7 @@ class GameInfo(object):
     # Same as above, but for the old disc versions of games
     disc_registry_keys = []
     # URL to the Nexus site for this game
+    nexusGame = u''  # Game domain name (e.g. skyrimspecialedition).
     nexusUrl = u''   # URL
     nexusName = u''  # Long Name
     nexusKey = u''   # Key for the "always ask this question" setting in
@@ -450,6 +452,17 @@ class GameInfo(object):
         if args:
             self.game_ini_path = initialization.init_dirs(self, *args)
         self._init_plugin_types()
+
+    def get_nexus_game_domain(self) -> str:
+        """Game domain name (e.g. skyrimspecialedition)."""
+        game = self.nexusGame
+        if not game:
+            parts = urlparse(self.nexusUrl)
+            path = parts.path.strip('/')
+            if path and '/' not in path:
+                game = path
+                self.nexusGame = game
+        return game
 
     def guess_flags(self, mod_fn_ext, masters_supplied=()):
         """Guess the flags of a mod/master info from its filename extension.
