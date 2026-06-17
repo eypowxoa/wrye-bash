@@ -1095,7 +1095,7 @@ class GeneralPage(_AScrollablePage):
     }
     _gm_reverse = reverse_dict(_global_menu_options)
     _setting_ids = {'global_menu_state', 'res_scroll_on', 'managed_game',
-                    'plugin_encoding', 'update_check_enabled',
+                    'plugin_encoding', 'update_check_enabled', 'nexus_api_key',
                     'update_check_cooldown', 'uac_restart', 'wb_temp_dir'}
 
     def __init__(self, parent, page_desc):
@@ -1175,6 +1175,13 @@ class GeneralPage(_AScrollablePage):
             btn_tooltip=_('Reset the path at which Wrye Bash will store '
                           'temporary files back to its default value.'),
             on_click=self._on_temp_folder_reset)
+        self._nexus_api_key = TextField(self,
+            init_text=bass.settings['bash.nexus.api_key'])
+        self._nexus_api_key.on_text_changed.subscribe(
+            self._on_nexus_api_key_change)
+        nexus_api_key_settings_link = ImageButton(self, get_image('external_link.16'),
+            btn_tooltip=_('Open the Nexus settings page.'),
+            on_click=self._on_nexus_api_key_settings_link)
         VLayout(border=6, spacing=4, item_expand=True, items=[
             self._page_desc_label,
             HorizontalLine(self),
@@ -1201,6 +1208,23 @@ class GeneralPage(_AScrollablePage):
                     browse_temp_folder_btn,
                     reset_temp_folder_btn,
             ]),
+            VBoxedLayout(self, _('Nexus'), spacing=4,
+                item_expand=True, items=[
+                    (
+                        HBoxedLayout(
+                            self,
+                            _('Api Key'),
+                            spacing=4,
+                            item_expand=True,
+                            items=[
+                                (self._nexus_api_key, LayoutOptions(weight=1)),
+                                nexus_api_key_settings_link,
+                            ]
+                        ),
+                        LayoutOptions(weight=1),
+                    ),
+                ]
+            ),
             VBoxedLayout(self, title=_(u'Miscellaneous'), spacing=6, items=[
                 HLayout(spacing=6, items=[
                     global_menu_label,
@@ -1274,6 +1298,14 @@ class GeneralPage(_AScrollablePage):
     def _on_temp_folder_reset(self):
         self._temp_folder_path.text_content = default_global_temp_dir()
 
+    def _on_nexus_api_key_change(self, new_nexus_api_key: str):
+        self._mark_setting_changed('nexus_api_key',
+            new_nexus_api_key != bass.settings['bash.nexus.api_key'])
+
+    @staticmethod
+    def _on_nexus_api_key_settings_link():
+        webbrowser.open('https://www.nexusmods.com/settings/api-keys')
+
     def _on_uac_restart(self, checked: bool):
         self._mark_setting_changed(u'uac_restart', checked)
 
@@ -1314,6 +1346,10 @@ class GeneralPage(_AScrollablePage):
             new_temp_dir = self._temp_folder_path.text_content
             bass.settings['bash.temp_dir'] = new_temp_dir
             self._request_restart(_('Temporary Folder'))
+        # Nexus Api Key
+        if self._is_changed('nexus_api_key'):
+            new_nexus_api_key = self._nexus_api_key.text_content
+            bass.settings['bash.nexus.api_key'] = new_nexus_api_key
         # Show Global Menu
         if self._is_changed('global_menu_state'):
             new_gm_state = self._global_menu_options[
