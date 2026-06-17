@@ -335,6 +335,8 @@ settingDefaults = { # keep current naming format till refactored
         'Rating': _('Rating'),
         'Size': _('Size'),
         'Status': _('Status'),
+        'Identifier': _('Nexus Mod'),
+        'Version': _('Version'),
     },
     #--Wrye Bash: Masters
     'bash.masters.cols': ['File', 'Num', 'Current Order'],

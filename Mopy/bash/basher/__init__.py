@@ -2168,11 +2168,16 @@ class InstallersList(UIList):
     global_links = defaultdict(lambda: Links()) # Global menu
     _sunkenBorder = False
     _editLabels = _copy_paths = True
+    @staticmethod
+    def _str_or_none(value: object | None) -> str:
+        return str(value) if value else ''
     _sort_keys = {'Package': None,
         'Order'   : _ask_info('order'),
         'Modified': _ask_info('ftime'),
         'Size'    : _ask_info('fsize'),
         'Files'   : _ask_info('num_of_files'),
+        'Identifier': _ask_info('mod_identifier', wrap=_str_or_none),
+        'Version': _ask_info('mod_version', wrap=_str_or_none),
     }
     _back_key_priority = UIList._back_key_priority | {
         k: j for j, k in enumerate(['installers.bkgd.skipped',
@@ -2200,6 +2205,8 @@ class InstallersList(UIList):
         'Size':     _ask_info('size_string', ()),
         'Files':    lambda self, p: self.data_store[p].number_string(
             self.data_store[p].num_of_files),##:_ask_info('num_of_files')(self, p)
+        'Identifier': _ask_info('mod_identifier', wrap=_str_or_none),
+        'Version': _ask_info('mod_version', wrap=_str_or_none),
     }
     #--DnD
     _dndList, _dndFiles, _dndColumns = True, True, [u'Order']

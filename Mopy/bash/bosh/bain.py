@@ -37,8 +37,8 @@ from itertools import chain, groupby
 from operator import attrgetter, itemgetter
 from zlib import crc32
 
-from . import DataStore, InstallerConverter, ModInfos, common_image_exts, \
-    best_ini_files, data_tracking_stores
+from . import DataStore, InstallerConverter, ModInfos, NexusFilename, \
+    VersionNumber, common_image_exts, best_ini_files, data_tracking_stores
 from .. import archives, bass, bolt, bush, env
 from ..archives import compress7z, defaultExt, extract7z, list_archive, \
     readExts
@@ -146,7 +146,7 @@ class Installer(ListInfo):
         'ci_dest_sizeCrc', 'skipExtFiles', 'skipDirFiles', 'status',
         'missingFiles', 'mismatchedFiles', 'project_refreshed', 'unSize',
         'espms', 'underrides', 'hasWizard', 'espmMap', 'hasReadme', 'hasBCF',
-        'hasBethFiles', 'has_fomod_conf')
+        'hasBethFiles', 'has_fomod_conf', 'filename_info')
 
     #--Package analysis/porting.
     type_string = _('Unrecognized')
@@ -291,6 +291,7 @@ class Installer(ListInfo):
         self.espmNots: set[FName] = set() #--Plugin FNames that user has decided not to install.
         self._remaps = bolt.FNDict() # Pickles to dict, equivalent to previous
         #--Volatiles (not pickled values)
+        self.filename_info: dict[str, NexusFilename | None] = dict()
         #--Volatiles: directory specific
         self.project_refreshed = False
         #--Volatile: set by refreshDataSizeCrc
@@ -312,6 +313,23 @@ class Installer(ListInfo):
         self.underrides = set()
         self.missingFiles = set()
         self.mismatchedFiles = set()
+
+    @property
+    def nexus_info(self) -> NexusFilename | None:
+        fn_key = str(self.fn_key)
+        if fn_key not in self.filename_info:
+            self.filename_info[fn_key] = NexusFilename.parse(fn_key)
+        return self.filename_info[fn_key]
+
+    @property
+    def mod_identifier(self) -> int | None:
+        nexus_info = self.nexus_info
+        return nexus_info.mod_identifier if nexus_info else None
+
+    @property
+    def mod_version(self) -> VersionNumber | None:
+        nexus_info = self.nexus_info
+        return nexus_info.mod_version if nexus_info else None
 
     @property
     def num_of_files(self): return len(self.fileSizeCrcs)
