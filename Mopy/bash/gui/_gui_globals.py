@@ -142,6 +142,8 @@ def init_image_resources(images_dir: _Path):
     _gui_images['square_check.16'] = _icc('square_checked.svg')
     # Deletion dialog button
     _gui_images['trash_can.32'] = _icc('trash_can.svg', 32)
+    # External Link button
+    _gui_images['external_link.16'] = _icc('external_link.svg', 16)
 
 def get_image(img_key):
     return _gui_images[img_key]
