@@ -231,6 +231,7 @@ settingDefaults = { # keep current naming format till refactored
     'bash.frameMax': False, # True if maximized
     'bash.page': 1,
     'bash.global_menu': 0,
+    'bash.nexus.api_key': '',
     'bash.pluginEncoding': 'cp1252',    # Western European
     'bash.restore_scroll_positions': True,
     'bash.show_internal_keys': False,
