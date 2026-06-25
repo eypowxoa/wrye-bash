@@ -1137,6 +1137,12 @@ class Installer(ListInfo):
                 dest = os_sep.join(('Docs', file_relative))
         return dest
 
+    def _is_file_changed_in_data_folder(self, f, installers_data):
+        return (
+            (f in self.ci_dest_sizeCrc)
+            and (f in installers_data.ci_underrides_sizeCrc)
+        )
+
     def refreshStatus(self, installersData):
         """Updates missingFiles, mismatchedFiles and status.
         Status:
@@ -1149,6 +1155,7 @@ class Installer(ListInfo):
         """
         data_sizeCrc = self.ci_dest_sizeCrc
         get_cached = installersData.data_sizeCrcDate.get
+        is_changed = self._is_file_changed_in_data_folder
         missing = self.missingFiles
         mismatched = self.mismatchedFiles
         underrides = set()
@@ -1168,6 +1175,8 @@ class Installer(ListInfo):
                 if sizeCrc == ci_underrides_sizeCrc.get(filename):
                     underrides.add(filename)
             if missing: inst_status = -10
+            elif any(is_changed(f, installersData) for f in mismatched):
+                inst_status = 40
             elif any(ModInfos.check_filename(str(f)) for f in mismatched):
                 inst_status = 10
             elif mismatched: inst_status = 20

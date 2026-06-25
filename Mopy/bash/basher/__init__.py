@@ -2233,7 +2233,7 @@ class InstallersList(UIList):
     _dndList, _dndFiles, _dndColumns = True, True, [u'Order']
     #--GUI
     status_color = {-20: 'grey', -10: 'red', 0: 'white', 10: 'orange',
-                    20: 'yellow', 30: 'green'}
+                    20: 'yellow', 30: 'green', 40: 'purple'}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
