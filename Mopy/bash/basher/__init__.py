@@ -2224,7 +2224,7 @@ class InstallersList(UIList):
         'Files': lambda self, p: self.data_store[p].number_string(
             self.data_store[p].num_of_files),##:_ask_info('num_of_files')(self, p)
         'Nexus Mod': _ask_info('nexus_mod_identifier', wrap=_int_with_empty_zero),
-        'Nexus File': _ask_info('nexus_file_identifier', wrap=_int_with_empty_zero),
+        'Nexus File': _ask_info('nexus_file_identifier'),
         'Version': _ask_info('nexus_file_version'),
         'Nexus Version': lambda self, p: self._retrieve_mod_version(p),
         'Nexus Updated': lambda self, p: '' if self._is_mod_updated(p) else '❌',

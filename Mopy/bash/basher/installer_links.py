@@ -48,6 +48,7 @@ from ..balt import AppendableLink, CheckLink, EnabledLink, OneItemLink, \
     UIList_Hide, Installer_Op
 from ..bolt import FName, LogFile, RefrIn, SubProgress, deprint, round_size
 from ..bosh import InstallerConverter, converters
+from ..bosh import NexusFilename
 from ..exception import CancelError, SkipError, StateError, XMLParsingError
 from ..gui import BusyCursor, copy_text_to_clipboard
 from ..wbtemp import cleanup_temp_dir
@@ -759,7 +760,7 @@ class _Installer_OpenAt_Regex(_Installer_OpenAt):
     def _url(self):
         return self.__class__._base_url + self._mod_url_id
 
-class Installer_OpenNexus(AppendableLink, _Installer_OpenAt_Regex):
+class Installer_OpenNexus(AppendableLink, _Installer_OpenAt):
     _text = f'{bush.game.nexusName}…'
     _help = _("Opens this mod's page at the %(nexusName)s.") % {
         'nexusName': bush.game.nexusName}
@@ -772,11 +773,17 @@ class Installer_OpenNexus(AppendableLink, _Installer_OpenAt_Regex):
         u'nexusName)s.') % {u'nexusName': bush.game.nexusName}
     _open_at_title = _('Open at %(nexusName)s') % {
         'nexusName': bush.game.nexusName}
-    _regex_pattern = bosh.reTesNexus
-    _regex_group = 2
     _base_url = bush.game.nexusUrl + 'mods/'
 
     def _append(self, window): return bool(bush.game.nexusUrl)
+
+    def _enable(self):
+        # The menu won't even be enabled if >1 plugin is selected
+        self._mod_url_id = NexusFilename(self.selected[0]).nexus_mod_identifier
+        return bool(self._mod_url_id)
+
+    def _url(self):
+        return self.__class__._base_url + str(self._mod_url_id)
 
 class Installer_OpenSearch(_Installer_OpenAt):
     _text = 'Google…'
@@ -793,9 +800,9 @@ class Installer_OpenSearch(_Installer_OpenAt):
         search_base = 'https://www.google.com/search?q='
         sel_inst_name = self.selected[0]
         # First, try extracting the mod name via the Nexus regex
-        ma_nexus = bosh.reTesNexus.search(sel_inst_name)
-        if ma_nexus and ma_nexus.group(1):
-            return search_base + _mk_google_param(ma_nexus.group(1))
+        nexus_info = NexusFilename(sel_inst_name)
+        if nexus_info.mod_name:
+            return search_base + _mk_google_param(nexus_info.mod_name)
         # If that fails, try extracting the mod name via the TESAlliance regex
         ma_tesa = bosh.reTESA.search(sel_inst_name)
         if ma_tesa and ma_tesa.group(1):

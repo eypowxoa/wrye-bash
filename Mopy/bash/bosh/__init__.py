@@ -93,6 +93,58 @@ reVersion = re.compile(
 #--Mod Extensions
 __exts = fr'((\.({"|".join(ext[1:] for ext in archives.readExts)}))|)$'
 reTesNexus = re.compile(r'(.*?)-(\d+)((?:-\w*)*(?:-\d+)?)' + __exts, re.I)
+reTesNexus20260702 = re.compile(r'(.*?) (\d+) (\d+(?:\.\d+)*) (\w+)' + __exts, re.I)
+
+
+class NexusFilename:
+    def __init__(self, filename: str):
+        self.mod_name = ''
+        self.mod_version = ''
+        self.nexus_file_identifier = ''
+        self.nexus_mod_identifier = 0
+        if self._parse_nexus_file_name(filename):
+            return
+        match = reTesNexus20260702.search(filename)
+        if not match:
+            return
+        self.mod_name = match.group(1)
+        self.mod_version = match.group(3)
+        self.nexus_file_identifier = match.group(4)
+        self.nexus_mod_identifier = int(match.group(2))
+
+    def _parse_nexus_file_name(self, filename: str) -> bool:
+        """
+        Parse the nexus file name.
+        Examples:
+        file-1.7z - no version or file id, so 1 is mod id.
+        file-1-999.7z - not all files have id, so 1 is mod id, 999 is version.
+        file-1-1000.7z - 1000 is too big for version, so 1 is mod id, 1000 is file id.
+        file-1-2-999.7z - 999 is too small for file id, so 1 is mod id, 2-999 is version.
+        file-1-2-1000.7z - full format, so 1 is mod id, 2 is version, 1000 is file id.
+        file-1-2-a1000.7z - a1000 is not int, so 1 is mod id, 2-a1000 is version.
+        """
+        match_result = reTesNexus.match(filename)
+        if not match_result:
+            return False
+        self.nexus_mod_identifier = int(match_result.group(2))
+        version_and_file_id = match_result.group(3).strip('-')
+        if not version_and_file_id:
+            return False
+        version_and_file_id_components = version_and_file_id.split('-')
+        file_id_candidate = version_and_file_id_components.pop()
+        try:
+            file_id = int(file_id_candidate)
+        except ValueError:
+            file_id = 0
+        if file_id > 999:
+            self.nexus_file_identifier = str(file_id)
+        else:
+            version_and_file_id_components.append(file_id_candidate)
+        self.mod_name = match_result.group(1)
+        self.mod_version = '-'.join(version_and_file_id_components)
+        return True
+
+
 reTESA = re.compile(r'(.*?)(?:-(\d{1,6})(?:\.tessource)?(?:-bain)?)?' + __exts,
                     re.I)
 del __exts

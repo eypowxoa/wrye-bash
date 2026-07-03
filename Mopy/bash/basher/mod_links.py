@@ -41,6 +41,7 @@ from ..balt import AppendableLink, CheckLink, ChoiceLink, EnabledLink, \
     ItemLink, Link, MenuLink, OneItemLink, SeparatorLink, TransLink
 from ..bolt import FName, SubProgress, dict_sort, sig_to_str, FNDict, \
     RefrIn, RefrData
+from ..bosh import NexusFilename
 from ..brec import RecordType
 from ..exception import BoltError, CancelError
 from ..gui import BmpFromStream, BusyCursor, copy_text_to_clipboard, askText, \
@@ -673,9 +674,9 @@ def _getUrl(installer):
     """"Try to get the url of the installer (order of priority will be:
     TESNexus, TESAlliance)."""
     url = None
-    ma = bosh.reTesNexus.search(installer)
-    if ma and ma.group(2):
-        url = f'{bush.game.nexusUrl}mods/{ma.group(2)}/'
+    nexus_info = NexusFilename(str(installer))
+    if nexus_info.nexus_mod_identifier > 0:
+        url = f'{bush.game.nexusUrl}mods/{nexus_info.nexus_mod_identifier}/'
     if not url:
         ma = bosh.reTESA.search(installer)
         if ma and ma.group(2):
