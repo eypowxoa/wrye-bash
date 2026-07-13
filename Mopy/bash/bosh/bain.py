@@ -1158,7 +1158,15 @@ class Installer(ListInfo):
                 inst_status = 40
             elif any(ModInfos.check_filename(str(f)) for f in mismatched):
                 inst_status = 10
-            elif mismatched: inst_status = 20
+            elif mismatched:
+                if bass.settings['bash.installers.hide99conflicts']:
+                    has_conflicts = False
+                    if isinstance(self, _InstallerPackage):
+                        conflicts = self._InstallerPackage__find_conflicts(True, None)[1]
+                        has_conflicts = any([not x[0].fn_key.startswith('99~') for x in conflicts])
+                    inst_status = 20 if has_conflicts else 30
+                else:
+                    inst_status = 20
             else: inst_status = 30
         #--Clean Dirty
         dirty_sizeCrc = self.dirty_sizeCrc
@@ -1166,7 +1174,7 @@ class Installer(ListInfo):
             sizeCrcDate = get_cached(filename)
             if (not sizeCrcDate or sizeCrc != sizeCrcDate[:2] or
                 sizeCrc == data_sizeCrc.get(filename)
-                ):
+            ):
                 del dirty_sizeCrc[filename]
         #--Done
         changed = self.status != inst_status or self.underrides != underrides
