@@ -49,6 +49,7 @@ __all__ = ['Installers_InstalledFirst', 'Installers_ProjectsFirst',
            u'Installers_AutoWizard', u'Installers_AutoRefreshProjects',
            'Installers_AutoRenameByMarkers',
            'Installers_DropAtCursor',
+           'Installers_Hide_99_Conflicts',
            'Installers_SkipVanillaContent',
            u'Installers_ApplyEmbeddedBCFs', u'Installers_BsaRedirection',
            u'Installers_RemoveEmptyDirs',
@@ -415,6 +416,12 @@ class Installers_AutoWizard(BoolLink):
 class Installers_DropAtCursor(BoolLink):
     _text, _bl_key = _(u'Drop At Cursor'), u'bash.installers.dropAtCursor'
     _help = _(u'Enable/Disable dropping installers at the cursor position.')
+
+#------------------------------------------------------------------------------
+class Installers_Hide_99_Conflicts(BoolLink):
+    _text = _('Hide conflicts with installers started with 99~')
+    _bl_key = 'bash.installers.hide99conflicts'
+    _help = _('Enable/Disable icon color for conflicting installers started with 99~.')
 
 #------------------------------------------------------------------------------
 class Installers_WizardOverlay(_Installers_BoolLink_Refresh):

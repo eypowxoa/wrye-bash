@@ -378,6 +378,7 @@ settingDefaults = { # keep current naming format till refactored
     'bash.installers.autoRenameByMarkers': False,
     'bash.installers.autoWizard': True,
     'bash.installers.dropAtCursor': False,
+    'bash.installers.hide99conflicts': False,
     'bash.installers.wizardOverlay': True,
     'bash.installers.fastStart': True,
     'bash.installers.autoRefreshBethsoft': False,
