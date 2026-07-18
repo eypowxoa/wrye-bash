@@ -360,6 +360,7 @@ def InitInstallerLinks():
     edit_menu.append_link(SeparatorLink())
     edit_menu.append_link(Installers_ExportOrder())
     edit_menu.append_link(Installers_ImportOrder())
+    edit_menu.append_link(Installers_CopyNexusIdsToClipboard())
     edit_menu.append_link(Installers_ExportNexusInstalledModsScript())
     # View Menu
     view_menu = InstallersList.global_links[_('View')]
