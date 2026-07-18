@@ -17,6 +17,8 @@ lxml==6.1.0
 packaging==26.0
 # For generating bash_default.ini section headers
 pyfiglet==1.0.4
+# Copying Nexus IDs to clipboard
+pyperclip
 # For PDF support in the doc browser
 PyMuPDF==1.27.2.2
 # For reflink copies (does not support Windows/ReFS yet)

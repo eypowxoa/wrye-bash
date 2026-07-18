@@ -25,6 +25,7 @@
 points to the InstallersList singleton."""
 import re
 from itertools import chain
+import pyperclip
 
 from . import InstallersList
 from . import Installers_Link
@@ -49,6 +50,7 @@ __all__ = ['Installers_InstalledFirst', 'Installers_ProjectsFirst',
            u'Installers_AutoWizard', u'Installers_AutoRefreshProjects',
            'Installers_AutoRenameByMarkers',
            'Installers_DropAtCursor',
+           'Installers_ExportNexusIds',
            'Installers_Hide_99_Conflicts',
            'Installers_SkipVanillaContent',
            u'Installers_ApplyEmbeddedBCFs', u'Installers_BsaRedirection',
@@ -416,6 +418,20 @@ class Installers_AutoWizard(BoolLink):
 class Installers_DropAtCursor(BoolLink):
     _text, _bl_key = _(u'Drop At Cursor'), u'bash.installers.dropAtCursor'
     _help = _(u'Enable/Disable dropping installers at the cursor position.')
+
+#------------------------------------------------------------------------------
+class Installers_ExportNexusIds(Installers_Link):
+    """Automatically apply Embedded BCFs to archives that have one."""
+    _text = _(u'Export Nexus IDs')
+    _help = _(u'Copy comma separated nexus ID list to clipboard.')
+
+    @balt.conversation
+    def Execute(self):
+        pyperclip.copy(','.join([
+            str(installer.nexus_mod_identifier)
+            for installer in self.idata.values()
+            if installer.nexus_mod_identifier > 0
+        ]))
 
 #------------------------------------------------------------------------------
 class Installers_Hide_99_Conflicts(BoolLink):
