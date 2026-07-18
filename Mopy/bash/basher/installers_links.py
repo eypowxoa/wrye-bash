@@ -24,6 +24,7 @@
 """Menu items for the _main_ menu of the installer tab - their window attribute
 points to the InstallersList singleton."""
 from itertools import chain
+import pyperclip
 
 from . import Installers_Link
 from .dialogs import CreateNewProject, CleanDataEditor, ImportOrderDialog, \
@@ -42,6 +43,7 @@ __all__ = ['Installers_InstalledFirst', 'Installers_ProjectsFirst',
            'Installers_CleanData', 'Installers_AvoidOnStart',
            u'Installers_Enabled', u'Installers_AutoAnneal',
            u'Installers_AutoWizard', u'Installers_AutoRefreshProjects',
+           'Installers_CopyNexusIdsToClipboard',
            'Installers_ExportNexusInstalledModsScript',
            'Installers_SkipVanillaContent',
            u'Installers_ApplyEmbeddedBCFs', u'Installers_BsaRedirection',
@@ -359,6 +361,21 @@ class Installers_AutoWizard(BoolLink):
     _bl_key = u'bash.installers.autoWizard'
     _help = _(u'Enable/Disable automatic installing or anneal (as applicable) '
               u'of packages after running its wizard.')
+
+#------------------------------------------------------------------------------
+class Installers_CopyNexusIdsToClipboard(Installers_Link):
+    """Export comma-separated list of nexus ids for using with the
+    Nexus Installed Mods script."""
+    _text = _(u'Copy Nexus IDs to clipboard')
+    _help = _(u'Copy comma separated nexus ID list to clipboard.')
+
+    @balt.conversation
+    def Execute(self):
+        pyperclip.copy(','.join([
+            str(installer.nexus_info.mod_identifier)
+            for installer in self.idata.values()
+            if installer.nexus_info
+        ]))
 
 #------------------------------------------------------------------------------
 class Installers_ExportNexusInstalledModsScript(Installers_Link):
