@@ -2260,7 +2260,7 @@ class InstallersList(UIList):
                 continue
             self._file_version_index[nexus_mod_identifier] = max(
                 self._file_version_index.get(nexus_mod_identifier, tuple()),
-                self._natural_comparison_key(installer.nexus_file_version)
+                self._nexus_version_comparison_key(installer.nexus_file_version)
             )
         self.RefreshUI()
 
@@ -2277,6 +2277,11 @@ class InstallersList(UIList):
             for part, is_digit in zip(_re_digits.split(key), cycle((False, True)))
         )
 
+    @staticmethod
+    def _nexus_version_comparison_key(key: str) -> tuple[int | str, ...]:
+        """https://stackoverflow.com/a/68859658"""
+        return InstallersList._natural_comparison_key(key.replace('.', '-'))
+
     def _is_mod_updated(self, key: FName) -> bool:
         installer: Installer = self.data_store[key]
         if installer.is_marker:
@@ -2284,8 +2289,8 @@ class InstallersList(UIList):
         if installer.nexus_mod_identifier <= 0:
             return True
         file_version_key = self._file_version_index.get(installer.nexus_mod_identifier, tuple())
-        mod_version = self._retrieve_mod_version(key).replace('.', '-')
-        mod_version_key = self._natural_comparison_key(mod_version)
+        mod_version = self._retrieve_mod_version(key)
+        mod_version_key = self._nexus_version_comparison_key(mod_version)
         return file_version_key >= mod_version_key
 
     @fast_cached_property
