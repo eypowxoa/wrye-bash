@@ -93,7 +93,11 @@ class ASkyrimSEGameInfo(ASkyrimGameInfo):
         xe_key_prefix = u'sseView'
 
     class Bain(ASkyrimGameInfo.Bain):
-        skip_bain_refresh = {u'sseedit backups', u'sseedit cache'}
+        skip_bain_refresh = {
+            'shadercache',
+            'sseedit backups',
+            'sseedit cache',
+        }
 
     class Esp(ASkyrimGameInfo.Esp):
         extension_forces_flags = True
