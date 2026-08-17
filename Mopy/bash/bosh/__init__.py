@@ -93,7 +93,7 @@ reVersion = re.compile(
 #--Mod Extensions
 __exts = fr'((\.({"|".join(ext[1:] for ext in archives.readExts)}))|)$'
 reTesNexus = re.compile(r'(.*?)-(\d+)((?:-\w*)*(?:-\d+)?)' + __exts, re.I)
-reTesNexus20260702 = re.compile(r'(.*?) (\d+) ([\w-]+(?:\.\w+)*)(?: \d{4}-\d{2}-\d{2}T\d{2}-\d{2}Z)? (\w+)' + __exts, re.I)
+reTesNexus20260702 = re.compile(r'(.*?) (\d+) (\S+)(?: \d{4}-\d{2}-\d{2}T\d{2}-\d{2}Z)? (\w+)' + __exts, re.I)
 
 
 class NexusFilename:
