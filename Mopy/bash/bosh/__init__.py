@@ -95,6 +95,7 @@ __exts = fr'((\.({"|".join(ext[1:] for ext in archives.readExts)}))|)$'
 # Nexus download names, in either of two formats. Groups: 1 = mod name,
 # 2 = mod ID (the remaining groups are the extension).
 #  - old: '{name}-{modID}-{version}-{timestamp}.7z'
+#  - transitional (since ~2026-05): '{name} {modID} {version} {sqid}.7z'
 #  - new (since ~2026-06): '{name} {modID} {version} {YYYY-MM-DDTHH-MMZ}
 #    {sqid}.7z'
 # A space may only separate the name and mod ID when the rest of the name
@@ -103,8 +104,13 @@ __exts = fr'((\.({"|".join(ext[1:] for ext in archives.readExts)}))|)$'
 # token right before the version, not the last number.
 def __new_tail(capture: bool = False) -> str:
     return (
-        r' (' + ('' if capture else '?:') +
-        r'\S+) \d{4}-\d\d-\d\dT\d\d-\d\dZ [0-9A-Za-z]+(?:-[\w-]*)?'
+        r' (' + ('' if capture else '?:') + r'\S+)'  # version
+        r'(?:'
+        # timestamp and squid - actual new format
+        r'(?: \d{4}-\d\d-\d\dT\d\d-\d\dZ [0-9A-Za-z]+(?:-[\w-]*)?)'
+        # squid without timestamp - transitional format between old and new
+        r'|(?: [0-9A-Za-z]+)'
+        r')'
     )
 reTesNexus = re.compile(r'(.*?)(?:-|\ (?=\d+' + __new_tail() + r'(?:\.\w+)?$))'
                         r'(\d+)(?:((?:-\w*)*(?:-\d+)?)|' + __new_tail(True) + r')' +
