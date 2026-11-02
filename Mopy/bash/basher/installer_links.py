@@ -758,7 +758,7 @@ class _Installer_OpenAt_Regex(_Installer_OpenAt):
     def _url(self):
         return self.__class__._base_url + self._mod_url_id
 
-class Installer_OpenNexus(AppendableLink, _Installer_OpenAt_Regex):
+class Installer_OpenNexus(AppendableLink, _Installer_OpenAt):
     _text = f'{bush.game.nexusName}…'
     _help = _("Opens this mod's page at the %(nexusName)s.") % {
         'nexusName': bush.game.nexusName}
@@ -771,11 +771,19 @@ class Installer_OpenNexus(AppendableLink, _Installer_OpenAt_Regex):
         u'nexusName)s.') % {u'nexusName': bush.game.nexusName}
     _open_at_title = _('Open at %(nexusName)s') % {
         'nexusName': bush.game.nexusName}
-    _regex_pattern = bosh.reTesNexus
-    _regex_group = 2
     _base_url = bush.game.nexusUrl + 'mods/'
 
     def _append(self, window): return bool(bush.game.nexusUrl)
+
+    def _enable(self):
+        nexus_info = bosh.NexusFilename.parse(str(self.selected[0]))
+        if nexus_info:
+            self._mod_url_id = str(nexus_info.mod_identifier)
+            return True
+        return False
+
+    def _url(self):
+        return self.__class__._base_url + self._mod_url_id
 
 class Installer_OpenSearch(_Installer_OpenAt):
     _text = 'Google…'
@@ -792,9 +800,9 @@ class Installer_OpenSearch(_Installer_OpenAt):
         search_base = 'https://www.google.com/search?q='
         sel_inst_name = self.selected[0]
         # First, try extracting the mod name via the Nexus regex
-        ma_nexus = bosh.reTesNexus.search(sel_inst_name)
-        if ma_nexus and ma_nexus.group(1):
-            return search_base + _mk_google_param(ma_nexus.group(1))
+        nexus_info = bosh.NexusFilename.parse(str(sel_inst_name))
+        if nexus_info:
+            return search_base + _mk_google_param(nexus_info.mod_name)
         # If that fails, try extracting the mod name via the TESAlliance regex
         ma_tesa = bosh.reTESA.search(sel_inst_name)
         if ma_tesa and ma_tesa.group(1):

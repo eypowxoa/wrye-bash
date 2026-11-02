@@ -113,6 +113,35 @@ reTESA = re.compile(r'(.*?)(?:-(\d{1,6})(?:\.tessource)?(?:-bain)?)?' + __exts,
                     re.I)
 del __exts, __new_tail
 
+class NexusFilename:
+    def __init__(self, mod_name: str, mod_version: VersionNumber, mod_identifier: int):
+        self.mod_name: str = mod_name
+        self.mod_version: VersionNumber = mod_version
+        self.mod_identifier: int = mod_identifier
+
+    @staticmethod
+    def parse(filename: str) -> NexusFilename | None:
+        match = reTesNexus.search(filename)
+        if not match:
+            return None
+        mod_name = str(match.group(1))
+        mod_identifier = int(match.group(2))
+        mod_version = str(match.group(4) or '')
+        if not mod_version:
+            version_and_file_id = str(match.group(3) or '')
+            if version_and_file_id:
+                version_and_file_id = version_and_file_id.strip('-')
+                version_and_file_id_components = version_and_file_id.split('-')
+                file_id_candidate = version_and_file_id_components.pop()
+                try:
+                    file_id = int(file_id_candidate)
+                except ValueError:
+                    file_id = 0
+                if file_id <= 999:
+                    version_and_file_id_components.append(file_id_candidate)
+                mod_version = '-'.join(version_and_file_id_components)
+        return NexusFilename(mod_name, VersionNumber(mod_version), mod_identifier)
+
 _re_digits = re.compile(r"(\d+)")
 
 def _natural_comparison_key(key: str) -> tuple[int | str, ...]:

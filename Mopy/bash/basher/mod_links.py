@@ -669,9 +669,9 @@ def _getUrl(installer):
     """"Try to get the url of the installer (order of priority will be:
     TESNexus, TESAlliance)."""
     url = None
-    ma = bosh.reTesNexus.search(installer)
-    if ma and ma.group(2):
-        url = f'{bush.game.nexusUrl}mods/{ma.group(2)}/'
+    nexus_info = bosh.NexusFilename.parse(str(installer))
+    if nexus_info:
+        url = f'{bush.game.nexusUrl}mods/{nexus_info.mod_identifier}/'
     if not url:
         ma = bosh.reTESA.search(installer)
         if ma and ma.group(2):
