@@ -101,9 +101,13 @@ __exts = fr'((\.({"|".join(ext[1:] for ext in archives.readExts)}))|)$'
 # is in the new format, so old names match exactly as before. In the new
 # format the version is all digits sometimes, hence the mod ID is the
 # token right before the version, not the last number.
-__new_tail = r' \S+ \d{4}-\d\d-\d\dT\d\d-\d\dZ [0-9A-Za-z]+(?:-[\w-]*)?'
-reTesNexus = re.compile(r'(.*?)(?:-|\ (?=\d+' + __new_tail + r'(?:\.\w+)?$))'
-                        r'(\d+)(?:(?:-\w*)*(?:-\d+)?|' + __new_tail + r')' +
+def __new_tail(capture: bool = False) -> str:
+    return (
+        r' (' + ('' if capture else '?:') +
+        r'\S+) \d{4}-\d\d-\d\dT\d\d-\d\dZ [0-9A-Za-z]+(?:-[\w-]*)?'
+    )
+reTesNexus = re.compile(r'(.*?)(?:-|\ (?=\d+' + __new_tail() + r'(?:\.\w+)?$))'
+                        r'(\d+)(?:((?:-\w*)*(?:-\d+)?)|' + __new_tail(True) + r')' +
                         __exts, re.I)
 reTESA = re.compile(r'(.*?)(?:-(\d{1,6})(?:\.tessource)?(?:-bain)?)?' + __exts,
                     re.I)
