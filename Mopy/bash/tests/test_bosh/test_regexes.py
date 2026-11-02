@@ -283,3 +283,10 @@ class TestReTesNexus_OldFormatWithoutTimestamp(_ATestReTesNexus):
     _test_str = ['SkyHUD v090B v4-463-0-90B.zip']
     _expected_matches = [('SkyHUD v090B v4', '463', '-0-90B', '', '.zip',
                           '.zip', 'zip')]
+
+class TestReTesNexus_TransitionalFormat(_ATestReTesNexus):
+    """Tests that a format between old and new can be parsed.
+    There is no example because Nexus renamed that files."""
+    _test_str = ['AI Overhaul AE 1.9.5 21654 1.9.5 n0oTCmkUb.zip']
+    _expected_matches = [('AI Overhaul AE 1.9.5', '21654',
+                          '', '1.9.5', '.zip', '.zip', 'zip')]
