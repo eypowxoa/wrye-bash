@@ -168,18 +168,18 @@ class NxMod(JsonParsable):
         'endorsement': lambda d, a: NxModEndorsement.parse_single(d[a]),
     }
     # The user-visible name for this mod
-    mod_display_name: str
+    mod_display_name: str | None
     # A short description of this mod
-    mod_summary: str
+    mod_summary: str | None
     # The full description of this mod, including markup (BBCode and/or HTML)
-    mod_description: str = field(repr=False)
+    mod_description: str | None = field(repr=False)
     # The URL to the main picture used for this mod
-    picture_url: str
+    picture_url: str | None
     # The number of times this mod has been downloaded
-    mod_downloads: int
+    mod_downloads: int | None
     # The number of times this mod has been downloaded, counting each user only
     # once
-    mod_unique_downloads: int
+    mod_unique_downloads: int | None
     # A unique ID representing this mod
     mod_uid: int
     # The game-relatively unique ID of this mod
