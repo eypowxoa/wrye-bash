@@ -341,6 +341,8 @@ settingDefaults = { # keep current naming format till refactored
         'Status': _('Status'),
         'Identifier': _('Nexus Mod'),
         'Version': _('Version'),
+        'Nexus Version': _('Nexus Version'),
+        'Nexus Updated': _('⥁'),
     },
     #--Wrye Bash: Masters
     'bash.masters.cols': ['File', 'Num', 'Current Order'],

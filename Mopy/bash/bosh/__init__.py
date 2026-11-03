@@ -191,6 +191,9 @@ class VersionNumber:
     def raw_version(self) -> str:
         return self._raw_version
 
+    def to_json(self) -> str:
+        return self.raw_version
+
 VersionNumber.EMPTY_VERSION = VersionNumber('')
 
 # Image extensions for BAIN and for the Screnshots tab

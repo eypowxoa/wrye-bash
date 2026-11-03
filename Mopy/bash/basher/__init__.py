@@ -75,7 +75,7 @@ from ..bolt import FName, GPath, RefrIn, RefrData, SubProgress, \
     forward_compat_path_to_fn, round_size, str_to_sig, to_unix_newlines, \
     to_win_newlines, top_level_files
 from ..bosh import DataStore, ModInfo, omods, read_dir_tags, read_loot_tags, \
-    save_tags_to_dir
+    VersionNumber, save_tags_to_dir
 from ..exception import BoltError, CancelError, SkipError, UnknownListener
 from ..gui import CENTER, BusyCursor, Button, CancelButton, CenteredSplash, \
     CheckListBox, Color, CopyOrMovePopup, DateAndTimeDialog, DropDown, \
@@ -88,6 +88,7 @@ from ..gui import CENTER, BusyCursor, Button, CancelButton, CenteredSplash, \
     get_image, get_installer_color_checks, get_image_dir, \
     copy_text_to_clipboard
 from ..localize import format_date
+from ..nexus import Nexus, NexusUpdateStatus
 from ..plugin_types import active_keys, ST_MERGED
 from ..update_checker import LatestVersion, UCThread
 
@@ -2178,6 +2179,8 @@ class InstallersList(UIList):
         'Files'   : _ask_info('num_of_files'),
         'Identifier': _ask_info('mod_identifier', wrap=_str_or_none),
         'Version': _ask_info('mod_version', wrap=_str_or_none),
+        'Nexus Version': lambda self, p: str(self._get_mod_version(p)),
+        'Nexus Updated': lambda self, p: self._get_is_updated(p),
     }
     _back_key_priority = UIList._back_key_priority | {
         k: j for j, k in enumerate(['installers.bkgd.skipped',
@@ -2207,12 +2210,41 @@ class InstallersList(UIList):
             self.data_store[p].num_of_files),##:_ask_info('num_of_files')(self, p)
         'Identifier': _ask_info('mod_identifier', wrap=_str_or_none),
         'Version': _ask_info('mod_version', wrap=_str_or_none),
+        'Nexus Version': lambda self, p: str(self._get_mod_version(p)),
+        'Nexus Updated': lambda self, p: '' if self._get_is_updated(p) else '❌',
     }
     #--DnD
     _dndList, _dndFiles, _dndColumns = True, True, [u'Order']
     #--GUI
     status_color = {-20: 'grey', -10: 'red', 0: 'white', 10: 'orange',
                     20: 'yellow', 30: 'green'}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._updater: NexusUpdateStatus | None = None
+
+    def _get_is_updated(self, key: FName) -> bool:
+        return self._get_updater().is_updated(key)
+
+    def _get_mod_version(self, key: FName) -> VersionNumber:
+        return self._get_updater().latest_version(key)
+
+    def _get_updater(self) -> NexusUpdateStatus:
+        if not self._updater:
+            self._updater = NexusUpdateStatus(
+                nexus=Nexus(bass.settings['bash.nexus.api_key'],
+                    float(bass.settings['bash.nexus.api_requests_delay']),
+                    logger=print),
+                game=bush.game.get_nexus_game_domain(),
+                data=self.data_store,
+                back=self._make_custom_event(self._on_update)
+            )
+            self._updater.start()
+        return self._updater
+
+    def _on_update(self, names: set[FName]):
+        for name in names:
+            self.PopulateItem(None, name)
 
     @fast_cached_property
     def icons(self):
