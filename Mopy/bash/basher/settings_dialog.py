@@ -1096,6 +1096,7 @@ class GeneralPage(_AScrollablePage):
     _gm_reverse = reverse_dict(_global_menu_options)
     _setting_ids = {'global_menu_state', 'res_scroll_on', 'managed_game',
                     'plugin_encoding', 'update_check_enabled', 'nexus_api_key',
+                    'nexus_update_period', 'nexus_update_period_unit',
                     'update_check_cooldown', 'uac_restart', 'wb_temp_dir'}
 
     def __init__(self, parent, page_desc):
@@ -1182,6 +1183,33 @@ class GeneralPage(_AScrollablePage):
         nexus_api_key_settings_link = ImageButton(self, get_image('external_link.16'),
             btn_tooltip=_('Open the Nexus settings page.'),
             on_click=self._on_nexus_api_key_settings_link)
+        self._default_nexus_update_period = 3
+        self._nexus_update_period = TextField(self,
+            init_text=str(bass.settings['bash.nexus.update_period']))
+        self._nexus_update_period.on_text_changed.subscribe(
+            self._on_nexus_update_period_change)
+        hour_label = _('Hour')
+        self._default_nexus_update_period_unit: str = 'h'
+        nexus_update_period_unit_choices = [
+            (_('Day'), 'd'),
+            (hour_label, self._default_nexus_update_period_unit),
+            (_('Minute'), 'm'),
+            (_('Second'), 's'),
+        ]
+        self._nexus_update_period_unit_labels: dict[str, str] = {
+            x[1]: x[0] for x in nexus_update_period_unit_choices
+        }
+        self._nexus_update_period_unit_values: dict[str, str] = {
+            x[0]: x[1] for x in nexus_update_period_unit_choices
+        }
+        self._nexus_update_period_unit = DropDown(self,
+            value=self._nexus_update_period_unit_labels.get(
+                bass.settings['bash.nexus.update_period_unit'],
+                hour_label
+            ),
+            choices=[x[0] for x in nexus_update_period_unit_choices])
+        self._nexus_update_period_unit.on_combo_select.subscribe(
+            self._on_nexus_update_period_unit_change)
         VLayout(border=6, spacing=4, item_expand=True, items=[
             self._page_desc_label,
             HorizontalLine(self),
@@ -1219,6 +1247,19 @@ class GeneralPage(_AScrollablePage):
                             items=[
                                 (self._nexus_api_key, LayoutOptions(weight=1)),
                                 nexus_api_key_settings_link,
+                            ]
+                        ),
+                        LayoutOptions(weight=1),
+                    ),
+                    (
+                        HBoxedLayout(
+                            self,
+                            _('Mods update check period'),
+                            spacing=4,
+                            item_expand=True,
+                            items=[
+                                (self._nexus_update_period, LayoutOptions(weight=1)),
+                                self._nexus_update_period_unit,
                             ]
                         ),
                         LayoutOptions(weight=1),
@@ -1306,6 +1347,26 @@ class GeneralPage(_AScrollablePage):
     def _on_nexus_api_key_settings_link():
         webbrowser.open('https://www.nexusmods.com/settings/api-keys')
 
+    def _on_nexus_update_period_change(self, new_value: str):
+        parsed = self._to_update_period_value(new_value)
+        self._mark_setting_changed('nexus_update_period',
+            parsed != bass.settings['bash.nexus.update_period'])
+
+    def _to_update_period_value(self, value: str) -> int:
+        try:
+            return int(value)
+        except ValueError:
+            return self._default_nexus_update_period
+
+    def _on_nexus_update_period_unit_change(self, new_value: str):
+        parsed = self._to_update_period_unit_value(new_value)
+        self._mark_setting_changed('nexus_update_period_unit',
+            parsed != bass.settings['bash.nexus.update_period_unit'])
+
+    def _to_update_period_unit_value(self, label: str) -> str:
+        return self._nexus_update_period_unit_values.get(label,
+            self._default_nexus_update_period_unit)
+
     def _on_uac_restart(self, checked: bool):
         self._mark_setting_changed(u'uac_restart', checked)
 
@@ -1350,6 +1411,16 @@ class GeneralPage(_AScrollablePage):
         if self._is_changed('nexus_api_key'):
             new_nexus_api_key = self._nexus_api_key.text_content
             bass.settings['bash.nexus.api_key'] = new_nexus_api_key
+        # Nexus Update Period
+        if self._is_changed('nexus_update_period'):
+            new_nx_upd_per = self._nexus_update_period.text_content
+            new_nx_upd_per = self._to_update_period_value(new_nx_upd_per)
+            bass.settings['bash.nexus.update_period'] = new_nx_upd_per
+        # Nexus Update Period Unit
+        if self._is_changed('nexus_update_period_unit'):
+            new_nx_upd_un = self._nexus_update_period_unit.get_value()
+            new_nx_upd_un = self._to_update_period_unit_value(new_nx_upd_un)
+            bass.settings['bash.nexus.update_period_unit'] = new_nx_upd_un
         # Show Global Menu
         if self._is_changed('global_menu_state'):
             new_gm_state = self._global_menu_options[
