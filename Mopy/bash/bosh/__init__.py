@@ -32,8 +32,8 @@ import sys
 import time
 from collections import defaultdict, deque, OrderedDict
 from collections.abc import Iterable
-from functools import wraps, partial
-from itertools import chain
+from functools import wraps, partial, total_ordering
+from itertools import chain, cycle
 from os import DirEntry
 
 # bosh-local imports - maybe work towards dropping (some of) these?
@@ -112,6 +112,52 @@ reTesNexus = re.compile(r'(.*?)(?:-|\ (?=\d+' + __new_tail() + r'(?:\.\w+)?$))'
 reTESA = re.compile(r'(.*?)(?:-(\d{1,6})(?:\.tessource)?(?:-bain)?)?' + __exts,
                     re.I)
 del __exts, __new_tail
+
+_re_digits = re.compile(r"(\d+)")
+
+def _natural_comparison_key(key: str) -> tuple[int | str, ...]:
+    """https://stackoverflow.com/a/68859658"""
+    return tuple(
+        int(part) if is_digit else part
+        for part, is_digit in zip(_re_digits.split(key), cycle((False, True)))
+    )
+
+@total_ordering
+class VersionNumber:
+    EMPTY_VERSION: VersionNumber
+
+    def __bool__(self) -> bool:
+        return bool(self._comparison_key)
+
+    def __eq__(self, other: VersionNumber) -> bool:
+        return self._comparison_key == other._comparison_key
+
+    def __init__(self, version: str):
+        normalized_version = version.replace('-', '.')
+        comparison_key = _natural_comparison_key(normalized_version)
+        self._comparison_key: tuple[int | str, ...] = comparison_key
+        self._pretty_version: str = normalized_version
+        self._raw_version: str = version
+
+    def __lt__(self, other: VersionNumber) -> bool:
+        return self._comparison_key < other._comparison_key
+
+    def __repr__(self) -> str:
+        return self.raw_version
+
+    def __str__(self) -> str:
+        return self.pretty_version
+
+    @property
+    def pretty_version(self) -> str:
+        return self._pretty_version
+
+    @property
+    def raw_version(self) -> str:
+        return self._raw_version
+
+VersionNumber.EMPTY_VERSION = VersionNumber('')
+
 # Image extensions for BAIN and for the Screnshots tab
 common_image_exts = {'.bmp', '.gif', '.jpg', '.jpeg', '.png', '.tif'}
 _ss_image_exts = frozenset([*common_image_exts, '.tga'])
