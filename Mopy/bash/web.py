@@ -109,6 +109,7 @@ class ARestHandler:
         if req_payload is None: req_payload = {}
         if req_data is None: req_data = {}
         if req_headers is None: req_headers = {}
+        self._apply_rate_limit()
         try:
             response = self._session.request(req_op.value,
                 self._base_url + req_endpoint, params=req_payload,
@@ -121,6 +122,10 @@ class ARestHandler:
         return response.json()
 
     # Abstract API ------------------------------------------------------------
+    def _apply_rate_limit(self):
+        """Applies the rate limit to the current session. Does nothing
+        by default, override to apply limit for your specific REST API."""
+
     def _handle_error_response(self, response):
         """Handle a response with a status code that is not in the 200-299
         range. By default, raises a RequestError with an 'unknown error'
