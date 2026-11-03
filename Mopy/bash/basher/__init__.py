@@ -75,7 +75,7 @@ from ..bolt import FName, GPath, RefrIn, RefrData, SubProgress, \
     forward_compat_path_to_fn, round_size, str_to_sig, to_unix_newlines, \
     to_win_newlines, top_level_files
 from ..bosh import DataStore, ModInfo, omods, read_dir_tags, read_loot_tags, \
-    save_tags_to_dir
+    VersionNumber, save_tags_to_dir
 from ..exception import BoltError, CancelError, SkipError, UnknownListener
 from ..gui import CENTER, BusyCursor, Button, CancelButton, CenteredSplash, \
     CheckListBox, Color, CopyOrMovePopup, DateAndTimeDialog, DropDown, \
@@ -88,6 +88,7 @@ from ..gui import CENTER, BusyCursor, Button, CancelButton, CenteredSplash, \
     get_image, get_installer_color_checks, get_image_dir, \
     copy_text_to_clipboard
 from ..localize import format_date
+from ..nexus import Nexus, NexusUpdateChecker, NexusUpdateStatus
 from ..plugin_types import active_keys, ST_MERGED
 from ..update_checker import LatestVersion, UCThread
 
@@ -2178,6 +2179,8 @@ class InstallersList(UIList):
         'Files'   : _ask_info('num_of_files'),
         'Identifier': _ask_info('mod_identifier', wrap=_str_or_none),
         'Version': _ask_info('mod_version', wrap=_str_or_none),
+        'Nexus Version': lambda self, p: str(self._get_mod_version(p)),
+        'Nexus Updated': lambda self, p: self._get_is_updated(p),
     }
     _back_key_priority = UIList._back_key_priority | {
         k: j for j, k in enumerate(['installers.bkgd.skipped',
@@ -2207,12 +2210,79 @@ class InstallersList(UIList):
             self.data_store[p].num_of_files),##:_ask_info('num_of_files')(self, p)
         'Identifier': _ask_info('mod_identifier', wrap=_str_or_none),
         'Version': _ask_info('mod_version', wrap=_str_or_none),
+        'Nexus Version': lambda self, p: str(self._get_mod_version(p)),
+        'Nexus Updated': lambda self, p: '' if self._get_is_updated(p) else '❌',
     }
     #--DnD
     _dndList, _dndFiles, _dndColumns = True, True, [u'Order']
     #--GUI
     status_color = {-20: 'grey', -10: 'red', 0: 'white', 10: 'orange',
                     20: 'yellow', 30: 'green'}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._nexus: Nexus | None = None
+        self._status_updater: NexusUpdateStatus | None = None
+        self._update_checker: NexusUpdateChecker | None = None
+        self._on_mods_update_event = self._make_custom_event(self._on_update)
+
+    def _get_is_updated(self, key: FName) -> bool:
+        return self._get_status_updater().is_updated(key)
+
+    def _get_mod_version(self, key: FName) -> VersionNumber:
+        return self._get_status_updater().get_version(key)
+
+    def _get_nexus(self) -> Nexus:
+        nexus = self._nexus
+        if not nexus:
+            nexus = Nexus(
+                bass.settings['bash.nexus.api_key'],
+                float(bass.settings['bash.nexus.api_requests_delay']),
+                logger=print
+            )
+            self._nexus = nexus
+        return nexus
+
+    def _get_status_updater(self) -> NexusUpdateStatus:
+        status_updater = self._status_updater
+        if not status_updater:
+            status_updater = NexusUpdateStatus(
+                data=self.data_store,
+                on_updated=self._on_subthread_updated_status,
+                updater=self._get_update_checker(),
+            )
+            self._status_updater = status_updater
+            status_updater.start()
+        return status_updater
+
+    def _get_update_checker(self) -> NexusUpdateChecker:
+        update_checker = self._update_checker
+        if not update_checker:
+            appdata = bass.dirs['wrye_bash_appdata']
+            database = appdata.join('nexus_updates_database.json')
+            update_checker = NexusUpdateChecker(
+                database_path=database,
+                game=bush.game.get_nexus_game_domain(),
+                logger=print,
+                nexus=self._get_nexus(),
+                on_update=self._on_subthread_updated_mods,
+            )
+            self._update_checker = update_checker
+            update_checker.start()
+        return update_checker
+
+    def _on_subthread_updated_mods(self, mods: set[int]) -> None:
+        self._get_status_updater().request_update(mods)
+
+    def _on_subthread_updated_status(self, names: set[FName]) -> None:
+        self._on_mods_update_event(names=names)
+
+    def _on_update(self, names: set[FName]):
+        for name in names:
+            self.PopulateItem(None, name)
+
+    def request_nexus_update(self) -> None:
+        self._get_update_checker().request_update()
 
     @fast_cached_property
     def icons(self):

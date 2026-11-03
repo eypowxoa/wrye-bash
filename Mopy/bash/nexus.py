@@ -63,17 +63,22 @@ from __future__ import annotations
 
 __author__ = 'Ganda, Infernio'
 
+import enum
 import json
 import uuid
 import webbrowser
+from collections.abc import Callable
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from threading import Lock, Thread
 from time import sleep, time
 
 from . import bass
-from .bolt import JsonParsable, gen_enum_parser, json_remap
+from .bolt import FName, JsonParsable, Path, gen_enum_parser, json_remap, \
+    json_serializable
+from .bosh import Installer, NexusFilename, VersionNumber
 from .exception import EndorsedTooSoonError, EndorsedWithoutDownloadError, \
     LimitReachedError, RequestError
 from .web import ARestHandler, ReqLog
@@ -103,6 +108,29 @@ class UpdatePeriod(Enum):
     ONE_DAY = '1d'
     ONE_WEEK = '1w'
     ONE_MONTH = '1m'
+
+    @staticmethod
+    def calculate(at: int, now: int) -> UpdatePeriod | None:
+        if UpdatePeriod.ONE_DAY.contains(at, now):
+            return UpdatePeriod.ONE_DAY
+        if UpdatePeriod.ONE_WEEK.contains(at, now):
+            return UpdatePeriod.ONE_WEEK
+        if UpdatePeriod.ONE_MONTH.contains(at, now):
+            return UpdatePeriod.ONE_MONTH
+        return None
+
+    def contains(self, at: int, now: int) -> bool:
+        return (now - self.period) < at
+
+    @enum.property
+    def period(self) -> int:
+        match self:
+            case self.ONE_DAY:
+                return 23 * _h + 30 * _m
+            case self.ONE_WEEK:
+                return 6 * _d + 23 * _h + 30 * _m
+            case _:
+                return 29 * _d + 23 * _h + 30 * _m
 
 class EndorsementStatus(Enum):
     """The valid states that a user's endorsement of a mod can have."""
@@ -806,3 +834,316 @@ class Nexus(ARestHandler):
         """Returns a list of all colour schemes, including the primary,
         secondary and 'darker' colours."""
         return NxColourScheme.parse_many(self._send_get('colourschemes.json'))
+
+_s = 1
+_m = 60 * _s
+_h = 60 * _m
+_d = 24 * _h
+_checked_at = 'checked_at'
+_updated_at = 'updated_at'
+_latest_version = 'latest_version'
+
+@dataclass(slots=True)
+class _NexusUpdateInfo(JsonParsable):
+    checked_at: int
+    current_version: VersionNumber | None
+    latest_version: VersionNumber | None
+    updated_at: int
+
+    _parsers = {
+        'current_version': lambda d, k: VersionNumber(d[k]) if d[k] else None,
+        'latest_version': lambda d, k: VersionNumber(d[k]) if d[k] else None,
+    }
+
+    def to_json(self) -> dict:
+        return {
+            'checked_at': self.checked_at,
+            'current_version': self.current_version,
+            'latest_version': self.latest_version,
+            'updated_at': self.updated_at,
+        }
+
+class NexusUpdateChecker(Thread):
+    def __init__(
+        self,
+        database_path: Path,
+        game: str,
+        logger: ReqLog,
+        nexus: Nexus,
+        on_update: Callable[[set[int]], None],
+    ):
+        super().__init__(daemon=True)
+        self._changed: bool = False
+        database: dict[int, _NexusUpdateInfo] = dict()
+        try:
+            with open(database_path, 'rb') as database_file:
+                json_data = json.loads(database_file.read().decode('utf8'))
+                if not isinstance(json_data, dict):
+                    raise BaseException(f'Not an object in {database_path}')
+                for k, v in json_data.items():
+                    database[int(k)] = _NexusUpdateInfo.parse_single(v)
+        except FileNotFoundError:
+            pass
+        self._checked_at: int = 0
+        self._database: dict[int, _NexusUpdateInfo] = database
+        self._database_path: Path = database_path
+        self._force_update: bool = False
+        self._game: str = game
+        self._logger: ReqLog = logger
+        self._nexus: Nexus = nexus
+        self._on_update: Callable[[set[int]], None] = on_update
+        self._registered: set[int] = set()
+
+    def _check_for_updates(self, now: int) -> None:
+        updated: set[int] = set()
+        if not bass.settings['bash.nexus.api_key']:
+            self._checked_at = now
+            return
+        try:
+            if self._force_update:
+                self._force_update = False
+                period = UpdatePeriod.calculate(self._checked_at, now)
+                period = period or UpdatePeriod.ONE_MONTH
+                self._update_database(self._checked_at, period)
+            for mod in self._registered:
+                if self._invalidate_mod(mod, now):
+                    updated.add(mod)
+            if updated:
+                for index, mod in enumerate(updated):
+                    self._update_mod_version(mod, now)
+        finally:
+            self._save_database_changes()
+        self._logger(f'Mods updated: {len(updated)}')
+        if updated:
+            self._on_update(updated)
+        self._checked_at = now
+
+    def _invalidate_mod(self, mod_identifier: int, now: int) -> bool:
+        try:
+            item = self._database[mod_identifier]
+        except KeyError:
+            self._set_item(mod_identifier)
+        else:
+            if self._is_update_period_passed(item.checked_at, now):
+                period = UpdatePeriod.calculate(item.checked_at, now)
+                if period:
+                    self._update_database(now, period)
+                else:
+                    self._set_item(mod_identifier, 0, 0, item.current_version)
+        return self._database[mod_identifier].latest_version is None
+
+    @staticmethod
+    def _is_update_period_passed(last: int, now: int) -> bool:
+        update_period = NexusUpdateChecker._update_period()
+        valid_since = now - update_period
+        return last < valid_since
+
+    def _save_database_changes(self) -> None:
+        if not self._changed:
+            return
+        self._changed = False
+        temp_name = self._database_path.body + '.tmp.json'
+        temp_path = self._database_path.head.join(temp_name)
+        with open(temp_path, 'wb') as database:
+            database.write(json.dumps(
+                self._database,
+                allow_nan=False,
+                default=json_serializable,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ).encode("utf8"))
+        temp_path.moveTo(self._database_path)
+
+    def _set_item(self, mod_identifier: int, checked_at: int = 0,
+        updated_at: int = 0, current_version: VersionNumber | None = None,
+        latest_version: VersionNumber | None = None) -> None:
+        self._changed = True
+        self._database[mod_identifier] = _NexusUpdateInfo(checked_at,
+            current_version, latest_version, updated_at)
+
+    def _update_database(self, now: int, period: UpdatePeriod) -> None:
+        data = self._nexus.mods_updated(self._game, period)
+        for nexus_item in data:
+            mod_identifier = nexus_item.mod_id
+            updated_at = nexus_item.latest_file_update
+            try:
+                item = self._database[mod_identifier]
+            except KeyError:
+                self._set_item(mod_identifier, now, updated_at)
+            else:
+                mod_updated = item.updated_at == updated_at
+                self._set_item(mod_identifier, now, updated_at,
+                    item.current_version,
+                    item.latest_version if mod_updated else None)
+        for mod_identifier, item in self._database.items():
+            checked_at = item.checked_at
+            if period.contains(checked_at, now) and (checked_at < now):
+                self._set_item(mod_identifier, now, item.updated_at,
+                    item.current_version, item.latest_version)
+
+    def _update_mod_version(self, mod_identifier: int, now: int) -> None:
+        data = self._nexus.mod_details(self._game, mod_identifier)
+        version = VersionNumber(data.mod_version)
+        updated_at = data.updated_timestamp
+        self._set_item(mod_identifier, now, updated_at, version, version)
+
+    @staticmethod
+    def _update_period() -> int:
+        period_unit = 0
+        match bass.settings['bash.nexus.update_period_unit']:
+            case 'd':
+                period_unit = _d
+            case 'h':
+                period_unit = _h
+            case 'm':
+                period_unit = _m
+            case 's':
+                period_unit = _s
+        return int(bass.settings['bash.nexus.update_period']) * period_unit
+
+    # Public API --------------------------------------------------------------
+
+    def get_version(self, mod: int) -> VersionNumber:
+        """
+        Returns a mod version known at this moment.
+        Also registers a mod for the update checking.
+        Fast, thread-safe, can be called anywhere as many times as you want.
+        """
+        if mod <= 0:
+            return VersionNumber.EMPTY_VERSION
+        self.register_mod(mod)
+        try:
+            item = self._database[mod]
+        except KeyError:
+            return VersionNumber.EMPTY_VERSION
+        return item.current_version or VersionNumber.EMPTY_VERSION
+
+    def register_mod(self, mod: int) -> None:
+        """
+        Register a mod for the update checking.
+        Called automatically in other methods if not yet registered.
+        Fast, thread-safe, can be called anywhere as many times as you want.
+        """
+        self._registered.add(mod)
+
+    def request_update(self) -> None:
+        """
+        Starts an update check for all registered mods.
+        Fast, thread-safe, can be called anywhere as many times as you want.
+        """
+        self._force_update = True
+
+    # Thread Runner -----------------------------------------------------------
+
+    def run(self):
+        while True:
+            sleep(0.1)
+            now = int(time())
+            at = self._checked_at
+            if self._force_update or self._is_update_period_passed(at, now):
+                self._check_for_updates(now)
+
+type _SourceData = dict[FName, tuple[int, VersionNumber]]
+
+class NexusUpdateStatus(Thread):
+    def __init__(
+        self,
+        data: dict,
+        on_updated: Callable[[set[FName]], None],
+        updater: NexusUpdateChecker,
+    ):
+        super().__init__(daemon=True)
+        self._data_store: dict = data
+        self._is_updated_cache: dict[FName, bool] = dict()
+        self._on_updated: Callable[[set[FName]], None] = on_updated
+        self._requests: set[int] = set()
+        self._requests_lock: Lock = Lock()
+        self._updater: NexusUpdateChecker = updater
+        self._version_cache: dict[FName, VersionNumber] = dict()
+        for name, (mod, version) in self._get_data().items():
+            latest_version = self._updater.get_version(mod)
+            self._is_updated_cache[name] = version >= latest_version
+            self._version_cache[name] = latest_version
+
+    def _get_cached_version(self, name: FName) -> VersionNumber:
+        return self._version_cache.get(name, VersionNumber.EMPTY_VERSION)
+
+    def _get_data(self, only: set[int] | None = None) -> _SourceData:
+        source: dict[FName, NexusFilename] = dict()
+        for name, installer in self._data_store.items():
+            info = installer.nexus_info
+            if info and (only is None or info.mod_identifier in only):
+                source[name] = info
+        index: dict[int, VersionNumber] = dict()
+        for info in source.values():
+            empty_version = VersionNumber.EMPTY_VERSION
+            old = index.setdefault(info.mod_identifier, empty_version)
+            index[info.mod_identifier] = max(old, info.mod_version)
+        return {name: (info.mod_identifier, index[info.mod_identifier])
+            for (name, info) in source.items()}
+
+    def _request_mod_update(self, name: FName) -> None:
+        installer = self._data_store.get(name)
+        mod = isinstance(installer, Installer) and installer.mod_identifier
+        if mod:
+            self.request_update({mod})
+
+    # Public API --------------------------------------------------------------
+
+    def get_version(self, name: FName) -> VersionNumber:
+        """
+        Get a version at this moment of a mod with specified name.
+        Also starts a status update for a mod.
+        Fast, thread-safe, can be called anywhere as many times as you want.
+        """
+        self._request_mod_update(name)
+        return self._get_cached_version(name)
+
+    def is_updated(self, name: FName) -> bool:
+        """
+        Check if a mod with specified name is updated at this moment.
+        Also starts a status update for a mod.
+        Fast, thread-safe, can be called anywhere as many times as you want.
+        """
+        self._request_mod_update(name)
+        return self._is_updated_cache.get(name, True)
+
+    def request_update(self, mods: set[int]) -> None:
+        """
+        Starts a status update for specified mods.
+        Fast, thread-safe, can be called anywhere as many times as you want.
+        """
+        with self._requests_lock:
+            self._requests.update(mods)
+
+    # Thread Runner -----------------------------------------------------------
+
+    def run(self):
+        batch: set[int] = set()
+        updated: set[FName] = set()
+        while True:
+            sleep(0.1)
+            batch.clear()
+            updated.clear()
+            with self._requests_lock:
+                batch.update(self._requests)
+                self._requests.clear()
+            if not batch:
+                continue
+            for name, (mod, version) in self._get_data(batch).items():
+                changed = False
+                old_version = self._get_cached_version(name)
+                nexus_version = self._updater.get_version(mod)
+                if nexus_version != old_version:
+                    self._version_cache[name] = nexus_version
+                    changed = True
+                old_updated = self._is_updated_cache.get(name, True)
+                is_updated = version >= nexus_version
+                if is_updated != old_updated:
+                    self._is_updated_cache[name] = is_updated
+                    changed = True
+                if changed:
+                    updated.add(name)
+            if updated:
+                self._on_updated(updated)

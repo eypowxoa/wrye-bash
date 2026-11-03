@@ -151,6 +151,9 @@ def init_dirs(game_info, opts, init_warnings):
         '-l', 'LocalAppDataPath', game_info, get_local_app_data_path,
         _('Failed to determine LocalAppData folder.'),
         _('LocalAppData folder does not exist: %(folder)s'))
+    dirs['wrye_bash_appdata'] = dirs['local_appdata'].join('WryeBash')
+    if not dirs['wrye_bash_appdata'].exists():
+        dirs['wrye_bash_appdata'].makedirs()
     if game_info.appdata_name:
         # AppData for the game, depends on if it's a WS game or not.
         ws_info = get_legacy_ws_game_info(game_info)

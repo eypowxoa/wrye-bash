@@ -494,6 +494,12 @@ def json_remap(remap_attr: str):
         return json_dict[remap_attr]
     return _remap_func
 
+def json_serializable(value):
+    try:
+        return value.to_json()
+    except AttributeError:
+        raise TypeError
+
 # LowStrings ------------------------------------------------------------------
 class CIstr(str):
     """See: http://stackoverflow.com/q/43122096/281545"""

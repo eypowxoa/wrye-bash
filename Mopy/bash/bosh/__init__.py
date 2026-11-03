@@ -167,6 +167,9 @@ class VersionNumber:
     def __eq__(self, other: VersionNumber) -> bool:
         return self._comparison_key == other._comparison_key
 
+    def __hash__(self) -> int:
+        return hash(self._raw_version)
+
     def __init__(self, version: str):
         normalized_version = version.replace('-', '.')
         comparison_key = _natural_comparison_key(normalized_version)
@@ -190,6 +193,9 @@ class VersionNumber:
     @property
     def raw_version(self) -> str:
         return self._raw_version
+
+    def to_json(self) -> str:
+        return self.raw_version
 
 VersionNumber.EMPTY_VERSION = VersionNumber('')
 
