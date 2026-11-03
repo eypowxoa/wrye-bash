@@ -68,7 +68,9 @@ import uuid
 import webbrowser
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
+from time import sleep, time
 
 from . import bass
 from .bolt import JsonParsable, gen_enum_parser, json_remap
@@ -477,7 +479,7 @@ class Nexus(ARestHandler):
     # ISO 8601 format
     _daily_reset: str | None
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, wait_between_requests: float = 0.0):
         super().__init__(extra_headers={
             'accept': 'application/json',
             'apikey': api_key,
@@ -493,8 +495,16 @@ class Nexus(ARestHandler):
         self._daily_limit = None
         self._daily_remaining = None
         self._daily_reset = None
+        self._next_request_time = 0.0
+        self._wait_between_requests = wait_between_requests
 
     # Abstract API ------------------------------------------------------------
+    def _apply_rate_limit(self):
+        now = time()
+        remaining = self._next_request_time - now
+        if remaining > 0.0 and self._wait_between_requests > 0.0:
+            sleep(remaining)
+
     def _handle_error_response(self, response):
         if response.status_code == 429:
             raise LimitReachedError()
@@ -511,8 +521,46 @@ class Nexus(ARestHandler):
         self._daily_limit = int(response_headers['x-rl-daily-limit'])
         self._daily_remaining = int(response_headers['x-rl-daily-remaining'])
         self._daily_reset = response_headers['x-rl-daily-reset']
+        now = time()
+        self._next_request_time = now + max(
+            self._calculate_interval(
+                now,
+                self._hourly_limit,
+                self._hourly_remaining,
+                self._hourly_reset,
+            ),
+            self._calculate_interval(
+                now,
+                self._daily_limit,
+                self._daily_remaining,
+                self._daily_reset,
+            ),
+        )
 
     # Internal API ------------------------------------------------------------
+    def _calculate_interval(
+        self,
+        now: float,
+        limit: int,
+        remaining: int,
+        reset: str
+    ) -> float:
+        try:
+            reset_date = datetime.strptime(reset, "%Y-%m-%d %H:%M:%S %z")
+        except ValueError:
+            return self._wait_between_requests
+        if limit <= 0:
+            return self._wait_between_requests
+        if remaining <= 0:
+            return self._wait_between_requests
+        timestamp = reset_date.timestamp()
+        remaining_time = timestamp - now
+        linear_interval = remaining_time / remaining
+        progress = (limit - remaining) / limit
+        coefficient = progress**2
+        result_interval = linear_interval * coefficient
+        return result_interval
+
     def _mod_endorse_shared(self, game_domain: str, mod_id: int,
             endpoint_file: str):
         """Shared code of mod_endorse and mod_disendorse."""
