@@ -232,6 +232,7 @@ settingDefaults = { # keep current naming format till refactored
     'bash.page': 1,
     'bash.global_menu': 0,
     'bash.nexus.api_key': '',
+    'bash.nexus.api_requests_delay': 10,
     'bash.nexus.update_period': 3,
     'bash.nexus.update_period_unit': 'h',
     'bash.pluginEncoding': 'cp1252',    # Western European
