@@ -1096,8 +1096,9 @@ class GeneralPage(_AScrollablePage):
     _gm_reverse = reverse_dict(_global_menu_options)
     _setting_ids = {'global_menu_state', 'res_scroll_on', 'managed_game',
                     'plugin_encoding', 'update_check_enabled', 'nexus_api_key',
-                    'nexus_update_period', 'nexus_update_period_unit',
-                    'update_check_cooldown', 'uac_restart', 'wb_temp_dir'}
+                    'nexus_api_requests_delay', 'nexus_update_period',
+                    'nexus_update_period_unit', 'update_check_cooldown',
+                    'uac_restart', 'wb_temp_dir'}
 
     def __init__(self, parent, page_desc):
         super(GeneralPage, self).__init__(parent, page_desc)
@@ -1183,6 +1184,11 @@ class GeneralPage(_AScrollablePage):
         nexus_api_key_settings_link = ImageButton(self, get_image('external_link.16'),
             btn_tooltip=_('Open the Nexus settings page.'),
             on_click=self._on_nexus_api_key_settings_link)
+        self._nexus_api_requests_delay_default: int = 0
+        self._nexus_api_requests_delay = TextField(self,
+            init_text=str(bass.settings['bash.nexus.api_requests_delay']))
+        self._nexus_api_requests_delay.on_text_changed.subscribe(
+            self._on_nexus_api_requests_delay_change)
         self._default_nexus_update_period = 3
         self._nexus_update_period = TextField(self,
             init_text=str(bass.settings['bash.nexus.update_period']))
@@ -1247,6 +1253,18 @@ class GeneralPage(_AScrollablePage):
                             items=[
                                 (self._nexus_api_key, LayoutOptions(weight=1)),
                                 nexus_api_key_settings_link,
+                            ]
+                        ),
+                        LayoutOptions(weight=1),
+                    ),
+                    (
+                        HBoxedLayout(
+                            self,
+                            _('Api Request Delay (in seconds)'),
+                            spacing=4,
+                            item_expand=True,
+                            items=[
+                                (self._nexus_api_requests_delay, LayoutOptions(weight=1)),
                             ]
                         ),
                         LayoutOptions(weight=1),
@@ -1347,6 +1365,17 @@ class GeneralPage(_AScrollablePage):
     def _on_nexus_api_key_settings_link():
         webbrowser.open('https://www.nexusmods.com/settings/api-keys')
 
+    def _on_nexus_api_requests_delay_change(self, new_value: str):
+        parsed_value = self._parse_nexus_api_requests_delay(new_value)
+        self._mark_setting_changed('nexus_api_requests_delay',
+            parsed_value != bass.settings['bash.nexus.api_requests_delay'])
+
+    def _parse_nexus_api_requests_delay(self, value: str) -> int:
+        try:
+            return int(value)
+        except ValueError:
+            return self._nexus_api_requests_delay_default
+
     def _on_nexus_update_period_change(self, new_value: str):
         parsed = self._to_update_period_value(new_value)
         self._mark_setting_changed('nexus_update_period',
@@ -1411,6 +1440,11 @@ class GeneralPage(_AScrollablePage):
         if self._is_changed('nexus_api_key'):
             new_nexus_api_key = self._nexus_api_key.text_content
             bass.settings['bash.nexus.api_key'] = new_nexus_api_key
+        # Nexus Api Requests Delay
+        if self._is_changed('nexus_api_requests_delay'):
+            nard_value = self._nexus_api_requests_delay.text_content
+            nard = self._parse_nexus_api_requests_delay(nard_value)
+            bass.settings['bash.nexus.api_requests_delay'] = nard
         # Nexus Update Period
         if self._is_changed('nexus_update_period'):
             new_nx_upd_per = self._nexus_update_period.text_content
