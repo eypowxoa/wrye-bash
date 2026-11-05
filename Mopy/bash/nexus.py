@@ -76,7 +76,7 @@ from . import bass
 from .bolt import JsonParsable, gen_enum_parser, json_remap
 from .exception import EndorsedTooSoonError, EndorsedWithoutDownloadError, \
     LimitReachedError, RequestError
-from .web import ARestHandler
+from .web import ARestHandler, ReqLog
 
 # First see if we even have the dependencies necessary to use the Nexus API
 try:
@@ -479,7 +479,8 @@ class Nexus(ARestHandler):
     # ISO 8601 format
     _daily_reset: str | None
 
-    def __init__(self, api_key: str, wait_between_requests: float = 0.0):
+    def __init__(self, api_key: str, wait_between_requests: float = 0.0, *,
+        logger: ReqLog | None = None):
         super().__init__(extra_headers={
             'accept': 'application/json',
             'apikey': api_key,
@@ -487,7 +488,7 @@ class Nexus(ARestHandler):
             # https://help.nexusmods.com/article/114-api-acceptable-use-policy
             'application-name': 'Wrye Bash',
             'application-version': bass.AppVersion,
-        })
+        }, logger=self._log_request)
         # Rate limiting information - set to None (= unknown) by default
         self._hourly_limit = None
         self._hourly_remaining = None
@@ -495,6 +496,7 @@ class Nexus(ARestHandler):
         self._daily_limit = None
         self._daily_remaining = None
         self._daily_reset = None
+        self._logger: ReqLog = logger or (lambda _: None)
         self._next_request_time = 0.0
         self._wait_between_requests = wait_between_requests
 
@@ -560,6 +562,13 @@ class Nexus(ARestHandler):
         coefficient = progress**2
         result_interval = linear_interval * coefficient
         return result_interval
+
+    def _log_request(self, message: str) -> None:
+        return self._logger(
+            f'Nexus {message}'
+            f' hourly {self._hourly_remaining}/{self._hourly_limit}'
+            f' daily {self._daily_remaining}/{self._daily_limit}'
+        )
 
     def _mod_endorse_shared(self, game_domain: str, mod_id: int,
             endpoint_file: str):
