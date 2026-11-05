@@ -31,6 +31,7 @@ from .dialogs import CreateNewProject, CleanDataEditor, ImportOrderDialog, \
 from .. import balt, bass, bolt, bosh, bush
 from ..balt import AppendableLink, BoolLink, EnabledLink, ItemLink, \
     SeparatorLink, Installer_Op
+from ..env import shellCopy
 from ..gui import copy_text_to_clipboard, askYes
 
 __all__ = ['Installers_InstalledFirst', 'Installers_ProjectsFirst',
@@ -41,6 +42,7 @@ __all__ = ['Installers_InstalledFirst', 'Installers_ProjectsFirst',
            'Installers_CleanData', 'Installers_AvoidOnStart',
            u'Installers_Enabled', u'Installers_AutoAnneal',
            u'Installers_AutoWizard', u'Installers_AutoRefreshProjects',
+           'Installers_ExportNexusInstalledModsScript',
            'Installers_SkipVanillaContent',
            u'Installers_ApplyEmbeddedBCFs', u'Installers_BsaRedirection',
            u'Installers_RemoveEmptyDirs',
@@ -357,6 +359,28 @@ class Installers_AutoWizard(BoolLink):
     _bl_key = u'bash.installers.autoWizard'
     _help = _(u'Enable/Disable automatic installing or anneal (as applicable) '
               u'of packages after running its wizard.')
+
+#------------------------------------------------------------------------------
+class Installers_ExportNexusInstalledModsScript(Installers_Link):
+    """Saves a file with the Nexus Installed Mods userscript for highlighting
+    an installed mods links on the Nexus website."""
+    _text = _(u'Get Nexus Installed Mods script...')
+    _help = _(u'Saves the Nexus Installed Mods userscript.')
+
+    @balt.conversation
+    def Execute(self):
+        self._showInfo(_(
+            'You need to manually import saved script '
+            'to the Tampermonkey (or analog) browser extension.'),
+            title=_('Note for the Nexus Installed Mods script'))
+        exp_path = self._askSave(
+            title=_('Nexus Installed Mods script - Choose Destination'),
+            defaultDir=bass.dirs['patches'], defaultFile='NexusInstalledMods.js',
+            wildcard='*.js')
+        if not exp_path: return
+        source = bass.dirs['mopy'].join('bash', 'compiled',
+            'NexusInstalledMods.js')
+        shellCopy({source: exp_path})
 
 #------------------------------------------------------------------------------
 class Installers_WizardOverlay(_Installers_BoolLink_Refresh):
