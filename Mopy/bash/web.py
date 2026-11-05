@@ -49,6 +49,7 @@ from __future__ import annotations
 __author__ = 'Ganda, Infernio'
 
 import platform
+from collections.abc import Callable
 from enum import Enum
 
 from . import bass
@@ -75,21 +76,27 @@ class _RestOp(Enum):
     GET = 'GET'
     POST = 'POST'
 
+type ReqLog = Callable[[str], None]
+
 # Public API ------------------------------------------------------------------
 class ARestHandler:
     """An abstract base class for web APIs that use REST-like semantics."""
     # The base URL for the REST API you're using. Set statically in subclasses
     _base_url: str
 
-    def __init__(self, extra_headers: dict[str, str] | None = None):
+    def __init__(self, extra_headers: dict[str, str] | None = None, *,
+        logger: ReqLog | None = None):
         """Initializes a new ARestHandler instance.
 
         :param extra_headers: An optional dict of extra HTTP headers to use for
-            all requests in this session."""
+            all requests in this session.
+        :param logger: A callable, which would be called for each request in
+            this session with one argument: string with status and url."""
         self._session = requests.Session()
         self._session.headers.update({
             'user-agent': _USER_AGENT,
         } | (extra_headers or {}))
+        self._logger: ReqLog = logger or (lambda *a: None)
 
     # Internal API ------------------------------------------------------------
     # Double underscore to differentiate it from the protected API below, which
@@ -110,15 +117,20 @@ class ARestHandler:
         if req_data is None: req_data = {}
         if req_headers is None: req_headers = {}
         self._apply_rate_limit()
+        request_url = self._base_url + req_endpoint
         try:
             response = self._session.request(req_op.value,
-                self._base_url + req_endpoint, params=req_payload,
+                request_url, params=req_payload,
                 data=req_data, headers=req_headers, timeout=10)
         except requests.RequestException as e:
+            self._logger(f'FAIL {request_url}')
             raise UnknownWebError() from e
-        if response.status_code < 200 or response.status_code > 299:
-            self._handle_error_response(response)
-        self._update_rate_limit_info(response.headers)
+        try:
+            if response.status_code < 200 or response.status_code > 299:
+                self._handle_error_response(response)
+            self._update_rate_limit_info(response.headers)
+        finally:
+            self._logger(f'{response.status_code} {request_url}')
         return response.json()
 
     # Abstract API ------------------------------------------------------------
