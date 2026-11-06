@@ -65,6 +65,8 @@ __author__ = 'Ganda, Infernio'
 
 import enum
 import json
+import re
+import requests
 import uuid
 import webbrowser
 from collections.abc import Callable
@@ -75,6 +77,7 @@ from enum import Enum
 from math import floor
 from threading import Lock, Thread
 from time import sleep, time
+from urllib.parse import parse_qs, urlsplit
 
 from . import bass
 from .bolt import FName, JsonParsable, Path, gen_enum_parser, json_remap, \
@@ -82,6 +85,7 @@ from .bolt import FName, JsonParsable, Path, gen_enum_parser, json_remap, \
 from .bosh import Installer, NexusFilename, VersionNumber
 from .exception import EndorsedTooSoonError, EndorsedWithoutDownloadError, \
     LimitReachedError, RequestError
+from .wbtemp import TempPool, new_temp_file
 from .web import ARestHandler, ReqLog
 
 # First see if we even have the dependencies necessary to use the Nexus API
@@ -319,6 +323,16 @@ class NxFile(JsonParsable):
     # The MD5 hash of this file. Only present when this file is retrieved as
     # part of an MD5 search
     file_md5: str | None
+
+@dataclass(slots=True)
+class NxDownloadLink(JsonParsable):
+    """Represents a download link for a file."""
+    # Name of the server
+    name: str
+    # Short name of the server
+    short_name: str
+    # URI of the file
+    URI: str
 
 @dataclass(slots=True)
 class NxDownloadedFile(JsonParsable):
@@ -770,7 +784,7 @@ class Nexus(ARestHandler):
 
     def mod_files_generate_link(self, game_domain: str, mod_id: int,
             file_id: int, nxm_key: str | None = None,
-            expiry: str | None = None): # FIXME wrap
+            expiry: str | None = None) -> list[NxDownloadLink]:
         """Generate a download link for a mod file.
 
         Note: Non-premium users must visit the website and provide the nxm key
@@ -786,9 +800,9 @@ class Nexus(ARestHandler):
             mfdl_payload = None
         else:
             mfdl_payload = {'key': nxm_key, 'expires': expiry}
-        return self._send_get(
+        return NxDownloadLink.parse_many(self._send_get(
             f'games/{game_domain}/mods/{mod_id}/files/{file_id}/'
-            f'download_link.json', req_payload=mfdl_payload)
+            f'download_link.json', req_payload=mfdl_payload))
 
     # Games - operations on multiple games ------------------------------------
     def games_list(self, include_unapproved=False) -> list[NxGame]:
@@ -1174,3 +1188,107 @@ class NexusUpdateStatus(Thread):
                     updated.add(name)
             if updated:
                 self._on_updated(updated)
+
+_nxm_pattern = re.compile(r'^/mods/(\d+)/files/(\d+)$')
+
+class NexusNxmHandler(Thread):
+    def __init__(self, nexus: Nexus,
+        on_error: Callable[[str], None],
+        on_progress: Callable[[int, int], None],
+        on_receive: Callable[[str], None]):
+        super().__init__(daemon=True)
+        self._nexus: Nexus = nexus
+        self._on_error: Callable[[str], None] = on_error
+        self._on_progress: Callable[[int, int], None] = on_progress
+        self._on_receive: Callable[[str], None] = on_receive
+
+    def _download_file(self, url: str) -> str:
+        local_filename = str(new_temp_file(temp_prefix='download'))
+        with requests.get(url, stream=True) as r:
+            r.raise_for_status()
+            try:
+                size = int(r.headers.get('content-length', ''))
+            except ValueError:
+                size = 0
+            written = 0
+            with open(local_filename, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=1024 * 1024):
+                    written = written + f.write(chunk)
+                    self._on_progress(written, size)
+        return local_filename
+
+    def _process_nxm(self, nxm: str) -> None:
+        def _error(err: str) -> None:
+            self._on_error(_(
+                f'{err} in «Mod Manager Download» link "%(nxm)".'
+            ) % {'nxm': nxm})
+        url = urlsplit(nxm)
+        if 'nxm' != url.scheme:
+            _error('Wrong scheme')
+            return
+        hostname = str(url.hostname)
+        if not hostname:
+            _error('Missing hostname')
+            return
+        path = str(url.path)
+        if not path:
+            _error('Missing path')
+            return
+        query = str(url.query)
+        if not query:
+            _error('Missing query')
+            return
+        if url.fragment:
+            _error('Found fragment')
+            return
+        if url.username:
+            _error('Found username')
+            return
+        if url.password:
+            _error('Found password')
+            return
+        if url.port:
+            _error('Found port')
+            return
+        parsed_path = _nxm_pattern.search(url.path)
+        if not parsed_path:
+            _error('Bad path')
+            return
+        try:
+            parsed_query = parse_qs(url.query, strict_parsing=True)
+        except ValueError:
+            _error('Bad query')
+            return
+        try:
+            key = ''.join(parsed_query['key'])
+        except KeyError:
+            _error('Missing key')
+            return
+        try:
+            expires = ''.join(parsed_query['expires'])
+        except KeyError:
+            _error('Missing expires')
+            return
+        game = hostname
+        mod = int(parsed_path.group(1))
+        file = int(parsed_path.group(2))
+        try:
+            download_links = self._nexus.mod_files_generate_link(
+                game, mod, file, key, expires)
+        except BaseException as error:
+            self._on_error(str(error))
+            return
+        for link in download_links:
+            try:
+                downloaded_file = self._download_file(link.URI)
+            except BaseException as error:
+                self._on_error(str(error))
+                return
+            self._on_receive(downloaded_file)
+
+    def run(self):
+        while True:
+            sleep(0.1)
+            nxm_temp = TempPool('nxm')
+            for nxm in nxm_temp:
+                self._process_nxm(nxm)

@@ -124,6 +124,7 @@ def parse():
                         action='store_true',
                         help='Allow Wrye Bash to run on unsupported operating '
                              'systems [EXPERIMENTAL].')
+    parser.add_argument('--nxm', dest='nxm')
     # Deprecated alias for --unsupported
     parser.add_argument('--unix', action='store_true', dest='unsupported',
                         help=argparse.SUPPRESS)

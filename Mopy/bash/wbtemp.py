@@ -39,6 +39,7 @@ import shutil
 import tempfile
 import os
 import platform
+from collections.abc import Iterator
 from pathlib import Path as PPath ##: To be obsoleted when we refactor Path
 from textwrap import wrap
 
@@ -244,6 +245,46 @@ class TempFile:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         cleanup_temp_file(self._temp_file)
+
+class TempPool:
+    def __init__(self, name: str):
+        self._name: str = name
+        self._pool: list[PPath] = []
+
+    def __iter__(self) -> Iterator[str]:
+        while True:
+            try:
+                last_path = self._pool.pop()
+            except IndexError:
+                root = self._get_root()
+                if not root.exists():
+                    break
+                for temp_path in root.iterdir():
+                    self._pool.append(temp_path)
+                if not self._pool:
+                    root.rmdir()
+                    break
+            else:
+                try:
+                    with open(last_path, 'rt', encoding='utf-8') as temp_file:
+                        content = temp_file.read()
+                    last_path.unlink(missing_ok=True)
+                except FileNotFoundError:
+                    continue
+                yield content
+
+    def _get_root(self) -> PPath:
+        return PPath(tempfile.gettempdir()).joinpath('WryeBash_' + self._name)
+
+    def add(self, content: str) -> None:
+        root = self._get_root()
+        root.mkdir(exist_ok=True, parents=False)
+        (file, path) = tempfile.mkstemp(dir=root)
+        try:
+            os.write(file, content.encode('utf-8'))
+        finally:
+            os.close(file)
+        self._pool.append(PPath(path))
 
 # API - Misc ------------------------------------------------------------------
 def default_global_temp_dir() -> str:

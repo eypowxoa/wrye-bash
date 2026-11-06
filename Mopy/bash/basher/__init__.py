@@ -91,7 +91,7 @@ from ..gui import CENTER, BusyCursor, Button, CancelButton, CenteredSplash, \
     copy_text_to_clipboard
 from ..localize import format_date
 from ..nexus import Nexus, NexusLimits, NexusUpdateChecker, \
-    NexusUpdateStatus
+    NexusNxmHandler, NexusUpdateStatus, NxDownloadLink
 from ..plugin_types import active_keys, ST_MERGED
 from ..update_checker import LatestVersion, UCThread
 
@@ -2225,9 +2225,15 @@ class InstallersList(UIList):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._nexus: Nexus | None = None
+        self._nxm_handler: NexusNxmHandler | None = None
+        self._on_mods_update_event = self._make_custom_event(self._on_update)
+        self._on_nxm_error_event = self._make_custom_event(
+            self._on_nxm_error_handler)
+        self._on_nxm_receive_event = self._make_custom_event(
+            self._on_nxm_receive_handler)
         self._status_updater: NexusUpdateStatus | None = None
         self._update_checker: NexusUpdateChecker | None = None
-        self._on_mods_update_event = self._make_custom_event(self._on_update)
+        self._get_nxm_handler()
 
     @staticmethod
     def _get_nexus_indicator() -> NexusIndicator:
@@ -2250,6 +2256,19 @@ class InstallersList(UIList):
             )
             self._nexus = nexus
         return nexus
+
+    def _get_nxm_handler(self) -> NexusNxmHandler:
+        handler = self._nxm_handler
+        if not handler:
+            handler = NexusNxmHandler(
+                nexus=self._get_nexus(),
+                on_error=self._on_nxm_error_callback,
+                on_progress=self._get_nexus_indicator().downloading_progress,
+                on_receive=self._on_nxm_receive_callback,
+            )
+            self._nxm_handler = handler
+            handler.start()
+        return handler
 
     def _get_status_updater(self) -> NexusUpdateStatus:
         status_updater = self._status_updater
@@ -2283,6 +2302,18 @@ class InstallersList(UIList):
 
     def _on_nexus_limits(self, limits: NexusLimits) -> None:
         self._get_nexus_indicator().api_limits(limits)
+
+    def _on_nxm_error_callback(self, error: str) -> None:
+        self._on_nxm_error_event(error=error)
+
+    def _on_nxm_error_handler(self, error: str) -> None:
+        showError(self, error, _('«Mod Manager Download» link error'))
+
+    def _on_nxm_receive_callback(self, file: str) -> None:
+        self._on_nxm_receive_event(file=file)
+
+    def _on_nxm_receive_handler(self, file: str) -> None:
+        showOk(self, file, 'FILE')
 
     def _on_subthread_updated_mods(self, mods: set[int]) -> None:
         self._get_status_updater().request_update(mods)

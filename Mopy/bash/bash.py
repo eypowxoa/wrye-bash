@@ -446,6 +446,10 @@ def main(opts: Namespace, help_urls):
         os.chdir(pathToProg)
     from . import localize # sets up NullTranslations, so that _() works
     try:
+        nxm_handler = opts.nxm is not None
+        if nxm_handler:
+            nxm_pool = wbtemp.TempPool('nxm')
+            nxm_pool.add(opts.nxm)
         # HTML file generation needs none of the below - just do it and quit
         if opts.genHtml is not None:
             print(f"Generating HTML file from '{opts.genHtml}'")
@@ -474,6 +478,8 @@ def main(opts: Namespace, help_urls):
         target_lang = opts.language or bass.boot_settings['Boot']['locale']
         bass.active_locale = localize.setup_locale(target_lang)
         if other_instance: # its message can be translated now
+            if nxm_handler:
+                sys.exit(0)
             bolt.deprint('Only one instance of Wrye Bash can run. Exiting.')
             _show_boot_popup(_('Only one instance of Wrye Bash can run.'))
         dump_environment() # into the BashBugDump for any error below
