@@ -51,6 +51,8 @@ __author__ = 'Ganda, Infernio'
 import platform
 from collections.abc import Callable
 from enum import Enum
+from threading import Event, Thread
+from time import sleep
 
 from . import bass
 from .exception import RequestError, UnknownWebError
@@ -78,6 +80,17 @@ class _RestOp(Enum):
 
 type ReqLog = Callable[[str], None]
 
+class _QueueItem:
+    def __init__(self, req_op: _RestOp, req_endpoint: str,
+            req_payload: _OptStrDict, req_data: _OptStrDict,
+            req_headers: _OptStrDict, lock: Event):
+        self.req_op: _RestOp = req_op
+        self.req_endpoint: str = req_endpoint
+        self.req_payload: _OptStrDict = req_payload
+        self.req_data: _OptStrDict = req_data
+        self.req_headers: _OptStrDict = req_headers
+        self.lock: Event = lock
+
 # Public API ------------------------------------------------------------------
 class ARestHandler:
     """An abstract base class for web APIs that use REST-like semantics."""
@@ -85,7 +98,7 @@ class ARestHandler:
     _base_url: str
 
     def __init__(self, extra_headers: dict[str, str] | None = None, *,
-        logger: ReqLog | None = None):
+        logger: ReqLog | None = None, threaded: bool = False):
         """Initializes a new ARestHandler instance.
 
         :param extra_headers: An optional dict of extra HTTP headers to use for
@@ -97,6 +110,12 @@ class ARestHandler:
             'user-agent': _USER_AGENT,
         } | (extra_headers or {}))
         self._logger: ReqLog = logger or (lambda *a: None)
+        self._request_queue: list[_QueueItem] = list()
+        self._result_queue: dict = dict()
+        self._runner: Thread | None = None
+        if threaded:
+            self._runner = Thread(target=self._worker, daemon=True)
+            self._runner.start()
 
     # Internal API ------------------------------------------------------------
     # Double underscore to differentiate it from the protected API below, which
@@ -104,7 +123,7 @@ class ARestHandler:
     # intended to be used by those
     def __make_request(self, req_op: _RestOp, req_endpoint: str,
             req_payload: _OptStrDict = None, req_data: _OptStrDict = None,
-            req_headers: _OptStrDict = None):
+            req_headers: _OptStrDict = None, in_runner: bool = False):
         """Performs an actual web request via the current session.
 
         :param req_op: The HTTP request method to use. See _Op.
@@ -116,6 +135,15 @@ class ARestHandler:
         if req_payload is None: req_payload = {}
         if req_data is None: req_data = {}
         if req_headers is None: req_headers = {}
+        if self._runner is not None and not in_runner:
+            lock = Event()
+            self._request_queue.append(_QueueItem(req_op, req_endpoint,
+                req_payload, req_data, req_headers, lock))
+            lock.wait()
+            result = self._result_queue.pop(lock)
+            if isinstance(result, BaseException):
+                raise result
+            return result
         self._apply_rate_limit()
         request_url = self._base_url + req_endpoint
         try:
@@ -132,6 +160,22 @@ class ARestHandler:
         finally:
             self._logger(f'{response.status_code} {request_url}')
         return response.json()
+
+    def _worker(self):
+        while True:
+            sleep(0.1)
+            try:
+                request = self._request_queue.pop(0)
+            except IndexError:
+                continue
+            try:
+                self._result_queue[request.lock] = self.__make_request(
+                    request.req_op, request.req_endpoint, request.req_payload,
+                    request.req_data, request.req_headers, True)
+            except BaseException as error:
+                self._result_queue[request.lock] = error
+            finally:
+                request.lock.set()
 
     # Abstract API ------------------------------------------------------------
     def _apply_rate_limit(self):

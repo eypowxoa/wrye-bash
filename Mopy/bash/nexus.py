@@ -519,7 +519,7 @@ class Nexus(ARestHandler):
     def __init__(self, api_key: str, wait_between_requests: float = 0.0, *,
         on_limits: Callable[[NexusLimits], None] | None = None,
         logger: ReqLog | None = None):
-        super().__init__(extra_headers={
+        super().__init__(threaded=True, extra_headers={
             'accept': 'application/json',
             'apikey': api_key,
             # See the Nexus docs, they request these two always be present:
