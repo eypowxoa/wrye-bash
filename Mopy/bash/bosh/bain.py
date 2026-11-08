@@ -706,12 +706,6 @@ class Installer(ListInfo):
             # Calculate these ahead of time
             start_tup = tuple(x + os_sep for x in start)
             skips.append(lambda f: f.startswith(start_tup))
-        if not self.skipVoices and self.espmNots:
-            def _skip_espm_voices(fileLower):
-                farPos = fileLower.startswith( # 'sound\\voice\\', 12 chars
-                    voice_dir) and fileLower.find(os_sep, 12)
-                return farPos > 12 and fileLower[12:farPos] in self.espmNots
-            skips.append(_skip_espm_voices)
         return skips, skip_ext
 
     @staticmethod
