@@ -642,6 +642,18 @@ def _main(opts, detected, restore_):
                     return  # Quit
     #--Start application
     frame = basher.Init(bash_app)  # Link.Frame is set here !
+
+    def _request_nexus_key() -> None:
+        from .basher.settings_dialog import SettingsDialog
+        SettingsDialog.display_dialog(initial_page=_('General') + '/')
+
+    def _request_nexus_update() -> None:
+        frame.notebook.jump_to('Installers')
+        frame.iPanel.uiList.request_nexus_update()
+
+    frame.statusBar.on_nexus_key_request = _request_nexus_key
+    frame.statusBar.on_nexus_update_request = _request_nexus_update
+
     frame.ensureDisplayed()
     frame.bind_refresh()
     # Start the update check in the background and pass control to wx's event

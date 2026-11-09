@@ -28,8 +28,14 @@ __author__ = u'nycz, Infernio, Utumno'
 
 import datetime
 import re
+import time
 from collections import defaultdict
+from collections.abc import Callable
+from enum import StrEnum
 from itertools import chain
+from math import ceil
+from math import floor
+from threading import Lock
 
 import wx as _wx
 import wx.adv as _adv
@@ -42,6 +48,7 @@ from .functions import copy_text_to_clipboard, read_from_clipboard
 from .images import GuiImage
 from .menus import Links
 from ..bolt import Path, dict_sort
+from ..nexus import NexusLimits
 
 class Font(_wx.Font):
     @staticmethod
@@ -525,3 +532,232 @@ class DnDStatusBar(Dragger):
 
     def set_sb_text(self, status_text, field_dex):
         self._native_widget.SetStatusText(status_text, field_dex)
+
+type _Callback = Callable[[], None]
+type _Number = float | int
+
+class _HSV:
+    def __init__(self, hue: _Number = 0, saturation: _Number = 0,
+        value: _Number = 0, alpha: _Number = 0):
+        self._hue: _Number = max(0, min(hue, 1))
+        self._saturation: _Number = max(0.0, min(saturation, 1))
+        self._value: _Number = max(0, min(value, 1))
+        self._alpha: _Number = max(0, min(alpha, 1))
+        native_hsv = _wx.Image.HSVValue(self._hue, self._saturation, self._value)
+        native_rgb = _wx.Image.HSVtoRGB(native_hsv)
+        self._brush: _wx.Brush = _wx.Brush(_wx.Colour(
+            native_rgb.red,
+            native_rgb.green,
+            native_rgb.blue,
+            round(self._alpha * 255),
+        ))
+
+    @property
+    def brush(self) -> _wx.Brush:
+        return self._brush
+
+    def combine(self, top: _HSV, x: float) -> _HSV:
+        if x <= 0.0:
+            return self
+        if x >= 1.0:
+            return top
+
+        def merge(a: _Number, b: _Number) -> _Number:
+            return a + (b - a) * x
+
+        return _HSV(
+            merge(self._hue, top._hue),
+            merge(self._saturation, top._saturation),
+            merge(self._value, top._value),
+            merge(self._alpha, top._alpha),
+        )
+
+class NexusStatus(StrEnum):
+    ERROR = _('Error')
+    READY = _('Ready')
+    UNSET = _('Not configured API key')
+    WORKS = _('Connected')
+
+class NexusIndicator(_AComponent):
+    _native_widget: _wx.Panel
+
+    def __init__(self, parent: _AComponent,
+        has_key: Callable[[], bool],
+        request_key: _Callback | None = None,
+        request_update: _Callback | None = None):
+        super().__init__(parent)
+        # Options
+        self._diameter: int = 4  # boxes
+        self._dot: int = 3  # pixels
+        self._gap: int = 1  # pixels
+        self._melt: _Number = 0.3  # seconds
+        self._speed: _Number = 30  # positions/second
+        # Calculated
+        self._box: int = (self._dot + self._gap)
+        self._size: int = ((self._box * self._diameter) - self._gap)
+        self._total: int = ((self._diameter - 1) * 4)
+        # Colors
+        self._back_color: _HSV = _HSV(0, 0, 0.7, 1)
+        self._bad_color: _HSV = _HSV(0, 1, 0.85, 1)
+        self._good_color: _HSV = _HSV(0.4, 1, 0.85, 1)
+        self._ready_color: _HSV = _HSV(0.4, 1, 0.6, 1)
+        self._spinner_color: _HSV = _HSV(0.7, 0.2, 1, 1)
+        # Progress
+        self._downloading_progress: int = 0
+        self._downloading_total: int = 0
+        self._updating_progress: int = 0
+        self._updating_total: int = 0
+        # Spinner
+        self._spinner: _Number = 0
+        self._spinner_state: list[_Number] = ([0] * self._total)
+        # Cache
+        self._tip: str = _('Nexus')
+        self._pen: _wx.Pen = _wx.Pen(_wx.PenInfo(width=0))
+        self._rects: list[_wx.Rect] = [
+            self._get_rect(x, self._diameter, self._dot, self._gap)
+            for x in range(self._total)
+        ]
+        inner = (self._size - (self._box * 2))
+        height = floor((inner - self._gap) / 2)
+        self._hourly_rect: _wx.Rect = _wx.Rect(
+            self._box, self._box, inner, height)
+        self._daily_rect: _wx.Rect = _wx.Rect(
+            self._box, self._size - self._box - height, inner, height)
+        # Callbacks
+        self._has_key: Callable[[], bool] = has_key
+        self._request_key: _Callback = request_key or (lambda: None)
+        self._request_update: _Callback = request_update or (lambda: None)
+        # Parameters
+        self._error: str = ''
+        self._limits: NexusLimits = NexusLimits()
+        self._paint_lock: Lock = Lock()
+        self._status: NexusStatus = NexusStatus.READY
+        self._ticked: _Number = time.time()
+        # Widget
+        self._timer: _wx.Timer = _wx.Timer(self._native_widget)
+        self._native_widget.SetSize(_wx.Size(self._size, self._size))
+        self._native_widget.Bind(_wx.EVT_TIMER, self._on_timer, self._timer)
+        self._native_widget.Bind(_wx.EVT_PAINT, self._on_paint)
+        self._native_widget.Bind(_wx.EVT_LEFT_UP, self._on_click)
+        self._timer.Start(ceil(1000 / 10))
+
+    def _calculate_progress(self, at: int, of: int) -> int:
+        return ((at // of) * self._total) if of > 0 else 0
+
+    def _draw_limit(self, paint: _wx.DC, limit: int, remaining: int,
+        rect: _wx.Rect) -> None:
+        if NexusStatus.READY == self._status:
+            clr = self._ready_color
+        elif NexusStatus.ERROR == self._status:
+            clr = self._bad_color
+        elif NexusStatus.UNSET == self._status:
+            clr = self._back_color
+        else:
+            clr = self._bad_color.combine(self._good_color, remaining / limit)
+        paint.SetBrush(clr.brush)
+        paint.DrawRectangle(rect)
+
+    def _get_progress(self) -> int:
+        if self._downloading_total > 0:
+            return self._calculate_progress(self._downloading_progress,
+                self._downloading_total)
+        else:
+            return self._calculate_progress(self._updating_progress,
+                self._updating_total)
+
+    @staticmethod
+    def _get_rect(progress: int, size: int, dot: int, gap: int) -> _wx.Rect:
+        top_left = (size - 1)
+        top_right = (size * 2) - 2
+        bottom_right = (size * 3) - 3
+        if progress < top_left:
+            x = 0
+            y = (top_left - progress)
+        elif progress < top_right:
+            x = (progress - top_left)
+            y = 0
+        elif progress < bottom_right:
+            x = top_left
+            y = (progress - top_right)
+        else:
+            x = (top_left - (progress - bottom_right))
+            y = top_left
+        box = (dot + gap)
+        return _wx.Rect(x * box, y * box, dot, dot)
+
+    def _is_running(self) -> bool:
+        if self._status is NexusStatus.ERROR:
+            return False
+        return ((0 < self._downloading_progress < self._downloading_total)
+            or (0 < self._updating_progress < self._updating_total))
+
+    def _on_click(self, _: _wx.Event) -> None:
+        if NexusStatus.UNSET == self._status:
+            self._request_key()
+        else:
+            self._request_update()
+
+    def _on_paint(self, _: _wx.Event) -> None:
+        brushes: list[_wx.Brush] = []
+        with self._paint_lock:
+            lims = self._limits
+            if self._has_key():
+                if NexusStatus.UNSET == self._status:
+                    self._status = NexusStatus.READY
+            else:
+                self._status = NexusStatus.UNSET
+            tooltip = f'{self._tip}: {self._status} {self._error}'.rstrip()
+            for x in range(self._total):
+                if x < self._get_progress():
+                    brushes.append(self._good_color.brush)
+                    continue
+                at = self._spinner_state[x]
+                melt = ((self._melt - (self._ticked - at)) / self._melt)
+                color = self._back_color.combine(self._spinner_color, melt)
+                brushes.append(color.brush)
+        dc = _wx.PaintDC(self._native_widget)
+        dc.SetPen(self._pen)
+        dc.DrawRectangleList(self._rects, brushes=brushes)
+        draw = self._draw_limit
+        draw(dc, lims.hourly_limit, lims.hourly_remaining, self._hourly_rect)
+        draw(dc, lims.daily_limit, lims.daily_remaining, self._daily_rect)
+        old_tooltip = self._native_widget.GetToolTip()
+        if (not old_tooltip) or (old_tooltip.GetTip() != tooltip):
+            self._native_widget.SetToolTip(tooltip)
+
+    def _on_timer(self, _: _wx.Event) -> None:
+        ticked = time.time()
+        if self._is_running():
+            move = (self._speed * (ticked - self._ticked))
+            before = floor(self._spinner)
+            after = floor(self._spinner + move)
+            for at in range(before, after):
+                at = (at + 1) % self._total
+                self._spinner_state[at] = self._ticked
+            self._spinner = ((self._spinner + move) % self._total)
+        self._ticked = ticked
+        self._native_widget.Refresh()
+
+    @property
+    def size(self) -> int:
+        return self._size
+
+    def api_limits(self, limits: NexusLimits) -> None:
+        with self._paint_lock:
+            self._limits = limits
+            self._status = NexusStatus.WORKS
+
+    def downloading_progress(self, at: int, of: int = 100) -> None:
+        with self._paint_lock:
+            self._downloading_progress = at
+            self._downloading_total = of
+
+    def updating_progress(self, at: int, of: int = 100) -> None:
+        with self._paint_lock:
+            self._updating_progress = at
+            self._updating_total = of
+
+    def runtime_error(self, message: str) -> None:
+        with self._paint_lock:
+            self._error = message
+            self._status = NexusStatus.ERROR

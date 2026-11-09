@@ -80,15 +80,16 @@ from ..exception import BoltError, CancelError, SkipError, UnknownListener
 from ..gui import CENTER, BusyCursor, Button, CancelButton, CenteredSplash, \
     CheckListBox, Color, CopyOrMovePopup, DateAndTimeDialog, DropDown, \
     EventResult, FileOpen, GlobalMenu, HLayout, Label, LayoutOptions, \
-    ListBox, Links, MultiChoicePopup, PanelWin, Picture, PureImageButton, \
-    RadioButton, SaveButton, Splitter, Stretch, TabbedPanel, TextArea, \
-    DnDNotebook, TextField, VLayout, WindowFrame, WithMouseEvents, \
+    ListBox, Links, MultiChoicePopup, NexusIndicator, PanelWin, Picture, \
+    PureImageButton, RadioButton, SaveButton, Splitter, Stretch, TabbedPanel, \
+    TextArea, DnDNotebook, TextField, VLayout, WindowFrame, WithMouseEvents, \
     get_shift_down, read_files_from_clipboard_cb, showError, askYes, \
     showWarning, askWarning, showOk, BmpFromStream, init_image_resources, \
     get_image, get_installer_color_checks, get_image_dir, \
     copy_text_to_clipboard
 from ..localize import format_date
-from ..nexus import Nexus, NexusUpdateChecker, NexusUpdateStatus
+from ..nexus import Nexus, NexusLimits, NexusUpdateChecker, \
+    NexusUpdateStatus
 from ..plugin_types import active_keys, ST_MERGED
 from ..update_checker import LatestVersion, UCThread
 
@@ -2226,6 +2227,10 @@ class InstallersList(UIList):
         self._update_checker: NexusUpdateChecker | None = None
         self._on_mods_update_event = self._make_custom_event(self._on_update)
 
+    @staticmethod
+    def _get_nexus_indicator() -> NexusIndicator:
+        return balt.Link.Frame.statusBar.get_nexus_indicator()
+
     def _get_is_updated(self, key: FName) -> bool:
         return self._get_status_updater().is_updated(key)
 
@@ -2238,6 +2243,7 @@ class InstallersList(UIList):
             nexus = Nexus(
                 bass.settings['bash.nexus.api_key'],
                 float(bass.settings['bash.nexus.api_requests_delay']),
+                on_limits=self._on_nexus_limits,
                 logger=print
             )
             self._nexus = nexus
@@ -2265,14 +2271,25 @@ class InstallersList(UIList):
                 game=bush.game.get_nexus_game_domain(),
                 logger=print,
                 nexus=self._get_nexus(),
+                on_error=self._on_subthread_updating_error,
+                on_progress=self._on_subthread_updating_progress,
                 on_update=self._on_subthread_updated_mods,
             )
             self._update_checker = update_checker
             update_checker.start()
         return update_checker
 
+    def _on_nexus_limits(self, limits: NexusLimits) -> None:
+        self._get_nexus_indicator().api_limits(limits)
+
     def _on_subthread_updated_mods(self, mods: set[int]) -> None:
         self._get_status_updater().request_update(mods)
+
+    def _on_subthread_updating_error(self, error: str) -> None:
+        self._get_nexus_indicator().runtime_error(error)
+
+    def _on_subthread_updating_progress(self, at: int, of: int) -> None:
+        self._get_nexus_indicator().updating_progress(at, of)
 
     def _on_subthread_updated_status(self, names: set[FName]) -> None:
         self._on_mods_update_event(names=names)
@@ -3451,7 +3468,7 @@ class BashNotebook(DnDNotebook):
             self.get_selected_page_index())
         return [t for t in TabInfo if t.tab_title == tab_title][0].tab_panel
 
-    def jump_to(self, page_title, item):
+    def jump_to(self, page_title, item=None):
         """Jumps to the specified item on the specified tab.
 
         Note: If you call this from inside an event handler, be sure to return
@@ -3465,6 +3482,8 @@ class BashNotebook(DnDNotebook):
             ind += is_enabled
         else: raise BoltError(f'Invalid tab key: {page_title}')
         self._native_widget.SetSelection(ind)
+        if not item:
+            return
         _keyed_tabs[page_title].tab_panel.SelectUIListItem(item,
                                                            deselectOthers=True)
 

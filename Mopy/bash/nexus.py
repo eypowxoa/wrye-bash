@@ -72,6 +72,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from math import floor
 from threading import Lock, Thread
 from time import sleep, time
 
@@ -488,6 +489,14 @@ class NxColourScheme(JsonParsable):
     # The 'darker' colour used for the colour scheme
     darker_colour: str
 
+class NexusLimits:
+    def __init__(self, daily_limit: int = 0, daily_remaining: int = 0,
+        hourly_limit: int = 0, hourly_remaining: int = 0):
+        self.daily_limit = daily_limit
+        self.daily_remaining = daily_remaining
+        self.hourly_limit = hourly_limit
+        self.hourly_remaining = hourly_remaining
+
 class Nexus(ARestHandler):
     """The main class used for connecting to the Nexus API. Requires an API key
     from your Nexus account."""
@@ -508,6 +517,7 @@ class Nexus(ARestHandler):
     _daily_reset: str | None
 
     def __init__(self, api_key: str, wait_between_requests: float = 0.0, *,
+        on_limits: Callable[[NexusLimits], None] | None = None,
         logger: ReqLog | None = None):
         super().__init__(extra_headers={
             'accept': 'application/json',
@@ -526,6 +536,7 @@ class Nexus(ARestHandler):
         self._daily_reset = None
         self._logger: ReqLog = logger or (lambda _: None)
         self._next_request_time = 0.0
+        self._on_limits = on_limits or (lambda _: None)
         self._wait_between_requests = wait_between_requests
 
     # Abstract API ------------------------------------------------------------
@@ -566,6 +577,8 @@ class Nexus(ARestHandler):
                 self._daily_reset,
             ),
         )
+        self._on_limits(NexusLimits(self._daily_limit, self._daily_remaining,
+            self._hourly_limit, self._hourly_remaining))
 
     # Internal API ------------------------------------------------------------
     def _calculate_interval(
@@ -870,6 +883,8 @@ class NexusUpdateChecker(Thread):
         game: str,
         logger: ReqLog,
         nexus: Nexus,
+        on_error: Callable[[str], None],
+        on_progress: Callable[[int, int], None],
         on_update: Callable[[set[int]], None],
     ):
         super().__init__(daemon=True)
@@ -891,6 +906,8 @@ class NexusUpdateChecker(Thread):
         self._game: str = game
         self._logger: ReqLog = logger
         self._nexus: Nexus = nexus
+        self._on_error: Callable[[str], None] = on_error
+        self._on_progress: Callable[[int, int], None] = on_progress
         self._on_update: Callable[[set[int]], None] = on_update
         self._registered: set[int] = set()
 
@@ -900,19 +917,29 @@ class NexusUpdateChecker(Thread):
             self._checked_at = now
             return
         try:
+            self._on_progress(1, 100)
             if self._force_update:
                 self._force_update = False
                 period = UpdatePeriod.calculate(self._checked_at, now)
                 period = period or UpdatePeriod.ONE_MONTH
                 self._update_database(self._checked_at, period)
+            self._on_progress(10, 100)
             for mod in self._registered:
                 if self._invalidate_mod(mod, now):
                     updated.add(mod)
+            self._on_progress(20, 100)
             if updated:
+                of: int = len(updated)
                 for index, mod in enumerate(updated):
                     self._update_mod_version(mod, now)
+                    self._on_progress(20 + floor(70 * (index / of)), 100)
+        except BaseException as error:
+            self._on_error(str(error))
+            self._checked_at = now
+            return
         finally:
             self._save_database_changes()
+        self._on_progress(100, 100)
         self._logger(f'Mods updated: {len(updated)}')
         if updated:
             self._on_update(updated)

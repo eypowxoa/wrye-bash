@@ -289,6 +289,9 @@ class TreePanel(_APageComponent):
             if tree_ctrl.GetItemText(curr_child) == parent_page:
                 # Found it - now to look for the child page
                 curr_subchild, sub_cookie = tree_ctrl.GetFirstChild(curr_child)
+                if not curr_subchild.IsOk():
+                    tree_ctrl.ScrollTo(curr_child)
+                    tree_ctrl.SelectItem(curr_child)
                 while curr_subchild.IsOk():
                     if tree_ctrl.GetItemText(curr_subchild) == sub_page:
                         # Found it - scroll to it and select it

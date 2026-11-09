@@ -27,6 +27,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from functools import partial, wraps
 from itertools import islice
 from typing import final
@@ -42,8 +43,8 @@ from .env import BTN_NO, BTN_YES, TASK_DIALOG_AVAILABLE
 from .exception import CancelError, SkipError, StateError
 from .gui import BusyCursor, Button, CancelButton, CENTER, CheckListBox, \
     Color, DialogWindow, DirOpen, EventResult, FileOpen, FileSave, \
-    GlobalMenu, HLayout, OkButton, \
-    LayoutOptions, ListBox, Links, LogDialog, LogFrame, PanelWin, TextArea, \
+    GlobalMenu, HLayout, OkButton, LayoutOptions, ListBox, Links, LogDialog, \
+    LogFrame, NexusIndicator, PanelWin, TextArea, \
     UIListCtrl, VLayout, bell, copy_files_to_clipboard, DeletionDialog, \
     web_viewer_available, AutoSize, get_shift_down, ContinueDialog, askText, \
     askNumber, askYes, askWarning, showOk, showError, showWarning, showInfo, \
@@ -1972,15 +1973,29 @@ class BashStatusBar(DnDStatusBar):
                 on_drag_end=self._on_drag_end, on_drag=self._on_drag,
                 on_drag_end_forced=self._on_drag_end_forced):
                 self.buttons[link.uid] = link
+        self.on_nexus_key_request: Callable[[], None] = (lambda: None)
+        self.on_nexus_update_request: Callable[[], None] = (lambda: None)
+        self._nexus_indicator: NexusIndicator = NexusIndicator(self,
+            lambda: bool(_settings['bash.nexus.api_key']),
+            self._make_custom_event(lambda: self.on_nexus_key_request()),
+            self._make_custom_event(lambda: self.on_nexus_update_request()))
         self._set_fields_size()
         ##: Why - 10? I just tried values until it looked good, why does
         # this one work best?
         self._native_widget.SetMinHeight(self._native_widget.FromDIP(
             self.icon_size - 10))
         self._draw_buttons()
+        p = self._native_widget.GetFieldRect(0).GetPosition()
+        self._nexus_indicator.component_position = (
+            p.x + self._native_widget.FromDIP(1),
+            p.y + self._native_widget.FromDIP(3),
+        )
         #--Setup Drag-n-Drop reordering
         self._reset_drag(False)
         self.moved = False
+
+    def get_nexus_indicator(self) -> NexusIndicator:
+        return self._nexus_indicator
 
     def set_sb_text(self, status_text, field_dex, *, show_panel=False):
         super().set_sb_text(status_text, field_dex)
@@ -2061,6 +2076,7 @@ class BashStatusBar(DnDStatusBar):
     def _draw_buttons(self):
         rect = self._native_widget.GetFieldRect(0)
         xPos, yPos = rect.x + self._native_widget.FromDIP(4), rect.y
+        xPos += self._native_widget.FromDIP(self.get_nexus_indicator().size)
         button_spacing = self._native_widget.FromDIP(self.icon_size)
         for button_link in self.buttons.values():
             button_link.component_position = (xPos, yPos)
@@ -2107,7 +2123,8 @@ class BashStatusBar(DnDStatusBar):
         if wx.Platform != '__WXMSW__':
             text_length_px += 10
         self._native_widget.SetStatusWidths(
-            [self._native_widget.FromDIP(self.icon_size) * len(self.buttons),
+            [self._native_widget.FromDIP(self.get_nexus_indicator().size + 3)
+            +self._native_widget.FromDIP(self.icon_size) * len(self.buttons),
              -1, text_length_px])
 
     @classmethod
