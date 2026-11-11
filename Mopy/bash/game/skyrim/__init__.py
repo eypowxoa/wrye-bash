@@ -156,6 +156,7 @@ class ASkyrimGameInfo(PatchGame):
             'skse', # 3P: SKSE
             'skyproc patchers', # 3P: SkyProc
             'slanims', # 3P: SL Animation Loader
+            'slifng', # 3P: Inflation framework NG
             'source', # see Psc.source_redirects above
             'strings',
             'tools', # 3P: FNIS
