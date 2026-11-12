@@ -219,6 +219,51 @@ def init_app_links(_apps_dir):
     # thinking about making this a separate tab to make it *super* easy
     return []
 
+def is_nexus_nxm_supported() -> bool:
+    return True
+
+def is_nexus_nxm_configured() -> bool:
+    return is_nexus_nxm_file_ok() and is_nexus_nxm_mime_ok()
+
+def is_nexus_nxm_file_ok() -> bool:
+    return get_nxm_registration_file().is_file()
+
+def is_nexus_nxm_mime_ok() -> bool:
+    mr = subprocess.run(['/usr/bin/env', 'xdg-mime', 'query', 'default',
+        get_nxm_mime_type()], capture_output=True, encoding='utf-8')
+    return 0 == mr.returncode and get_nxm_file_name() == mr.stdout.strip()
+
+def get_nxm_mime_type() -> str:
+    return 'x-scheme-handler/nxm'
+
+@functools.cache
+def get_nxm_registration_file() -> _Path:
+    return get_local_applications_dir().join(get_nxm_file_name())
+
+@functools.cache
+def get_local_applications_dir() -> _Path:
+    relative = False
+    data_env = os.getenv('XDG_DATA_HOME')
+    if data_env:
+        data_path = _Path(data_env)
+        if data_path.is_absolute():
+            return data_path.join('applications')
+        else:
+            relative = True
+    home_env = os.getenv('HOME')
+    if home_env:
+        home_path = _Path(home_env)
+        if home_path.is_absolute():
+            return home_path.join('.local', 'share', 'applications')
+        else:
+            relative = True
+    if relative:
+        raise RuntimeError(_('XDG_DATA_HOME or HOME is not absolute.'))
+    raise RuntimeError(_('XDG_DATA_HOME or HOME is not set.'))
+
+def get_nxm_file_name() -> str:
+    return 'wrye-bash-nxm-protocol.desktop'
+
 def testUAC(_gameDataPath):
     pass # Noop on Linux
 

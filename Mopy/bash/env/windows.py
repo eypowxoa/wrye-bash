@@ -1134,6 +1134,27 @@ def init_app_links(apps_dir) -> list[tuple[_Path, list[_Path] | None, str]]:
         init_params.append((path, custom_icon_paths, shortcut_descr))
     return init_params
 
+def is_nexus_nxm_supported() -> bool:
+    return False
+
+def is_nexus_nxm_configured() -> bool:
+    raise NotImplementedError
+
+def is_nexus_nxm_file_ok() -> bool:
+    raise NotImplementedError
+
+def is_nexus_nxm_mime_ok() -> bool:
+    raise NotImplementedError
+
+def get_nxm_mime_type() -> str:
+    raise NotImplementedError
+
+def get_nxm_registration_file() -> _Path:
+    raise NotImplementedError
+
+def get_local_applications_dir() -> _Path:
+    raise NotImplementedError
+
 @functools.cache
 def get_file_version(filename, *, __ignored=((1, 0, 0, 0), (0, 0, 0, 0))):
     """Return the version of a dll/exe, using the native win32 functions

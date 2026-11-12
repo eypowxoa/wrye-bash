@@ -21,8 +21,11 @@
 #
 # =============================================================================
 import os
+import subprocess
 import webbrowser
 from collections import defaultdict
+
+from desktop_entry_lib import DesktopEntry, TranslatableKey
 
 from . import TabInfo
 from .constants import colorInfo, settingDefaults
@@ -30,7 +33,9 @@ from .dialogs import UpdateNotification
 from .. import balt, barb, bass, bolt, bosh, bush, exception
 from ..balt import BashStatusBar, Link, Resources, colors
 from ..bolt import deprint, dict_sort, readme_url, reverse_dict
-from ..env import is_uac, shellDelete, shellMove
+from ..env import get_local_applications_dir, get_nxm_mime_type, \
+    get_nxm_registration_file, is_nexus_nxm_file_ok, is_nexus_nxm_mime_ok, \
+    is_nexus_nxm_supported, is_uac, shellDelete, shellMove
 from ..gui import ApplyButton, ATreeMixin, BusyCursor, Button, CancelButton, \
     CheckBox, CheckListBox, ClickableImage, Color, ColorPicker, DialogWindow, \
     DirOpen, DoubleListBox, DropDown, FileOpen, FileSave, HBoxedLayout, \
@@ -1096,9 +1101,9 @@ class GeneralPage(_AScrollablePage):
     _gm_reverse = reverse_dict(_global_menu_options)
     _setting_ids = {'global_menu_state', 'res_scroll_on', 'managed_game',
                     'plugin_encoding', 'update_check_enabled', 'nexus_api_key',
-                    'nexus_api_requests_delay', 'nexus_update_period',
-                    'nexus_update_period_unit', 'update_check_cooldown',
-                    'uac_restart', 'wb_temp_dir'}
+                    'nexus_api_requests_delay', 'nexus_nxm_command',
+                    'nexus_update_period', 'nexus_update_period_unit',
+                    'update_check_cooldown', 'uac_restart', 'wb_temp_dir'}
 
     def __init__(self, parent, page_desc):
         super(GeneralPage, self).__init__(parent, page_desc)
@@ -1177,6 +1182,33 @@ class GeneralPage(_AScrollablePage):
             btn_tooltip=_('Reset the path at which Wrye Bash will store '
                           'temporary files back to its default value.'),
             on_click=self._on_temp_folder_reset)
+        if is_nexus_nxm_supported():
+            if 'nt' == os.name:
+                raise NotImplementedError
+            else:
+                self._nexus_nxm_command = TextField(self,
+                    init_text=bass.settings['bash.nexus.nxm_command'])
+                self._nexus_nxm_command.on_text_changed.subscribe(
+                    self._on_nexus_nxm_command_change)
+                self._nexus_nxm_status = Label(self,
+                    init_text=self._get_nexus_nxm_status())
+                self._nexus_nxm_register = Button(self,
+                    btn_label=_('Register'),
+                    on_click=self._on_nexus_nxm_register_click)
+                self._nexus_nxm_unregister = Button(self,
+                    btn_label=_('Unregister'),
+                    on_click=self._on_nexus_nxm_unregister_click)
+                self._update_nexus_nxm_registration_buttons()
+                nexus_nxm_items = [
+                    Button(self, btn_label=_('?'), exact_fit=True,
+                        on_click=self._on_nexus_nxm_command_help_click),
+                    (self._nexus_nxm_command, LayoutOptions(weight=1)),
+                    self._nexus_nxm_status,
+                    self._nexus_nxm_register,
+                    self._nexus_nxm_unregister,
+                ]
+        else:
+            nexus_nxm_items = [Label(self, init_text=_('Not supported'))]
         self._nexus_api_key = TextField(self,
             init_text=bass.settings['bash.nexus.api_key'])
         self._nexus_api_key.on_text_changed.subscribe(
@@ -1244,6 +1276,16 @@ class GeneralPage(_AScrollablePage):
             ]),
             VBoxedLayout(self, _('Nexus'), spacing=4,
                 item_expand=True, items=[
+                    (
+                        HBoxedLayout(
+                            self,
+                            _('«Mod Manager Download»'),
+                            spacing=4,
+                            item_expand=True,
+                            items=nexus_nxm_items,
+                        ),
+                        LayoutOptions(weight=1),
+                    ),
                     (
                         HBoxedLayout(
                             self,
@@ -1357,6 +1399,70 @@ class GeneralPage(_AScrollablePage):
     def _on_temp_folder_reset(self):
         self._temp_folder_path.text_content = default_global_temp_dir()
 
+    def _is_nexus_nxm_command_configured(self) -> bool:
+        return bool(self._nexus_nxm_command.text_content.strip())
+
+    def _on_nexus_nxm_command_help_click(self) -> None:
+        balt.showInfo(self, title=_('Nexus NXM handler command'), message=_(
+            'You need to manually enter shell-command to launch the WryeBash '
+            'with --nxm argument with %u value. For example:\n'
+            'cd /home/user/WryeBash && python3.12 Wrye\\ Bash\\ Launcher.pyw '
+            ' --nxm %u\n'
+            'DO NOT USE THIS EXAMPLE IT ALMOST CERTAINLY WRONG ON YOUR SYSTEM'
+        ))
+
+    def _on_nexus_nxm_command_change(self, new_value: str):
+        self._mark_setting_changed('nexus_nxm_command',
+            new_value != bass.settings['bash.nexus.nxm_command'])
+        self._update_nexus_nxm_registration_buttons()
+
+    def _update_nexus_nxm_registration_buttons(self) -> None:
+        configured = self._is_nexus_nxm_command_configured()
+        self._nexus_nxm_register.enabled = configured
+        self._nexus_nxm_unregister.enabled = configured
+
+    def _on_nexus_nxm_register_click(self) -> None:
+        command = self._nexus_nxm_command.text_content
+        command = self._escape_desktop_exec(command)
+        app_name = TranslatableKey()
+        app_name.default_text = 'WryeBash Nxm Handler'
+        desktop_file = DesktopEntry()
+        desktop_file.Exec = f'/usr/bin/env bash -c {command}'
+        desktop_file.MimeType = [get_nxm_mime_type()]
+        desktop_file.Name = app_name
+        desktop_file.StartupNotify = False
+        desktop_file.Type = 'Application'
+        registration_file = get_nxm_registration_file()
+        with registration_file.open('wt', encoding='utf-8') as f:
+            f.write(desktop_file.get_text())
+        self._update_desktop_database()
+        self._update_nexus_nxm_status()
+
+    def _on_nexus_nxm_unregister_click(self) -> None:
+        get_nxm_registration_file().remove()
+        self._update_desktop_database()
+        self._update_nexus_nxm_status()
+
+    @staticmethod
+    def _escape_desktop_exec(command: str) -> str:
+        for c in ['\\', '"', '`', '$']:
+            command = command.replace(c, '\\' + c)
+        return f'"{command}"'
+
+    @staticmethod
+    def _update_desktop_database() -> None:
+        subprocess.run(['/usr/bin/env', 'update-desktop-database',
+            get_local_applications_dir(), ]).check_returncode()
+
+    @staticmethod
+    def _get_nexus_nxm_status() -> str:
+        file_ok = ('☑' if is_nexus_nxm_file_ok() else '☐')
+        mime_ok = ('☑' if is_nexus_nxm_mime_ok() else '☐')
+        return f'{file_ok}\n{mime_ok}'
+
+    def _update_nexus_nxm_status(self) -> None:
+        self._nexus_nxm_status.label_text = self._get_nexus_nxm_status()
+
     def _on_nexus_api_key_change(self, new_nexus_api_key: str):
         self._mark_setting_changed('nexus_api_key',
             new_nexus_api_key != bass.settings['bash.nexus.api_key'])
@@ -1436,6 +1542,10 @@ class GeneralPage(_AScrollablePage):
             new_temp_dir = self._temp_folder_path.text_content
             bass.settings['bash.temp_dir'] = new_temp_dir
             self._request_restart(_('Temporary Folder'))
+        # Nexus Nxm Command
+        if self._is_changed('nexus_nxm_command'):
+            new_nexus_nxm_command = self._nexus_nxm_command.text_content
+            bass.settings['bash.nexus.nxm_command'] = new_nexus_nxm_command
         # Nexus Api Key
         if self._is_changed('nexus_api_key'):
             new_nexus_api_key = self._nexus_api_key.text_content
